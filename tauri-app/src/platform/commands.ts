@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  AecStatus,
   AudioDspSettings,
   BlackHoleResult,
   BlackHoleStatus,
   BlurRect,
   InstalledTheme,
+  MenuNode,
   ModeStatus,
   NetworkInfo,
   NetworkInterfaceInfo,
@@ -45,6 +47,7 @@ export interface Commands {
   // Audio devices and DSP
   get_audio_devices: { args: NoArgs; result: string[] };
   get_audio_settings: { args: NoArgs; result: Partial<AudioDspSettings> };
+  get_aec_status: { args: NoArgs; result: AecStatus };
   update_audio_settings: { args: { settings: AudioDspSettings }; result: string };
   get_server_prefs: { args: NoArgs; result: ServerPrefs };
   save_server_prefs: { args: { prefs: ServerPrefs }; result: string };
@@ -129,6 +132,12 @@ export interface Commands {
   show_main_window: { args: NoArgs; result: void };
   minimize_main_window: { args: NoArgs; result: void };
   hide_main_window: { args: NoArgs; result: void };
+
+  // macOS chrome: the app menu, the native window controls and the Dock badge.
+  // The backend ignores all three on other platforms.
+  set_app_menu: { args: { menu: MenuNode[] }; result: void };
+  apply_macos_window_layout: { args: { mode: 'full' | 'pocket' }; result: void };
+  set_dock_badge: { args: { label: string | null }; result: void };
 }
 
 export type CommandName = keyof Commands;

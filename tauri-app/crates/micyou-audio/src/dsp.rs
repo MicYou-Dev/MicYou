@@ -116,6 +116,32 @@ impl AudioDspSettings {
         if !matches!(self.ns_type.as_str(), "PureVox" | "RNNoise" | "Speexdsp") {
             self.ns_type = Self::default().ns_type;
         }
+        self.enforce_aec_availability();
+    }
+
+    /// Clears `aec_enabled` when this platform cannot capture a far-end
+    /// reference, so a configuration that was force-enabled by hand (or carried
+    /// over from another machine) is downgraded instead of processing without
+    /// echo cancellation while the UI claims it is running.
+    ///
+    /// Returns `true` when the stored value had to be changed.
+    pub fn enforce_aec_availability(&mut self) -> bool {
+        self.apply_aec_availability(crate::aec::aec_reference_availability())
+    }
+
+    fn apply_aec_availability(&mut self, availability: crate::aec::AecAvailability) -> bool {
+        if !self.aec_enabled || availability.available {
+            return false;
+        }
+        log::warn!(
+            "[AEC] Disabled: no far-end reference capture is available ({})",
+            availability
+                .reason
+                .map(|reason| reason.as_str())
+                .unwrap_or("unknown")
+        );
+        self.aec_enabled = false;
+        true
     }
 }
 
@@ -1999,6 +2025,46 @@ mod tests {
             data[data.len() - 1].abs() > 0.01,
             "AGC should have amplified the signal"
         );
+    }
+
+    #[test]
+    fn aec_is_downgraded_when_no_reference_is_available() {
+        let mut settings = AudioDspSettings {
+            aec_enabled: true,
+            ..Default::default()
+        };
+
+        assert!(settings.apply_aec_availability(crate::aec::AecAvailability::unsupported()));
+        assert!(!settings.aec_enabled);
+        // Idempotent: a second pass has nothing left to downgrade.
+        assert!(!settings.apply_aec_availability(crate::aec::AecAvailability::unsupported()));
+    }
+
+    #[test]
+    fn aec_is_kept_when_a_reference_is_available() {
+        let mut settings = AudioDspSettings {
+            aec_enabled: true,
+            ..Default::default()
+        };
+
+        assert!(!settings.apply_aec_availability(crate::aec::AecAvailability::ready()));
+        assert!(settings.aec_enabled);
+    }
+
+    #[test]
+    fn downgrade_leaves_other_stages_untouched() {
+        let mut settings = AudioDspSettings {
+            aec_enabled: true,
+            ns_enabled: true,
+            gain: 6.0,
+            ..Default::default()
+        };
+
+        settings.apply_aec_availability(crate::aec::AecAvailability::unsupported());
+
+        assert!(!settings.aec_enabled);
+        assert!(settings.ns_enabled);
+        assert_eq!(settings.gain, 6.0);
     }
 }
 

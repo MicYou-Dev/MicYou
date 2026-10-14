@@ -1,5 +1,5 @@
 import { onMounted, ref } from 'vue';
-import { appWindow, command } from '@/platform';
+import { appWindow, command, onEvent } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
 
 interface WindowAnimations {
@@ -129,6 +129,12 @@ export function useWindow(animations?: WindowAnimations) {
   // close button: the remembered choice or the confirm dialog decides.
   const track = useListeners();
   onMounted(() => void track(appWindow.onCloseRequested(requestClose)));
+
+  // macOS draws its own traffic lights, so the backend intercepts the native
+  // close button and forwards it here; the flow above stays the single answer.
+  // Both can fire for one click, which is harmless: the dialog is a ref and
+  // hide/exit already collapse concurrent calls into one animation.
+  onMounted(() => void track(onEvent('main-window-close-requested', requestClose)));
 
   return {
     isHidden, showCloseConfirm,

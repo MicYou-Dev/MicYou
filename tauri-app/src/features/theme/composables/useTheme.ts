@@ -1,4 +1,4 @@
-import { computed, ref, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import { useColorMode, useStorage } from '@vueuse/core';
 import { command, type SystemAccentColor } from '@/platform';
 import type { HslColor } from '../types';
@@ -200,6 +200,11 @@ async function initializeSystemAccent() {
   if (systemAccentInitialized.value || systemAccentLoading.value || typeof window === 'undefined') return;
   systemAccentInitialized.value = true;
   window.addEventListener('focus', refreshSystemAccentOnFocus);
+  // Picking "system" is the moment the user expects the OS accent, so it is
+  // re-read then instead of answering from the value loaded earlier.
+  watch(themeMode, (mode) => {
+    if (mode === 'system' && !systemAccentLoading.value) void loadSystemAccent();
+  });
   await loadSystemAccent();
 }
 

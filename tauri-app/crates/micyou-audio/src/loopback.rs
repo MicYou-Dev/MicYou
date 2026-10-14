@@ -23,7 +23,7 @@ use ringbuf::HeapRb;
 use crate::AecFailure;
 
 const RING_BUF_SEC: usize = 2;
-const TARGET_RATE: u32 = 48000;
+pub(crate) const TARGET_RATE: u32 = 48000;
 const MAX_REFERENCE_LAG_SAMPLES: usize = TARGET_RATE as usize * 300 / 1000;
 const CAPTURE_JOIN_TIMEOUT: Duration = Duration::from_millis(500);
 const CAPTURE_JOIN_POLL: Duration = Duration::from_millis(10);
@@ -31,7 +31,8 @@ const CAPTURE_JOIN_POLL: Duration = Duration::from_millis(10);
 /// Cross-platform speaker loopback capture for AEC far-end reference.
 ///
 /// - Windows: WASAPI loopback on default render device (no virtual device needed)
-/// - macOS: cpal input from BlackHole
+/// - macOS: Core Audio process tap of the system playback, excluding MicYou
+///   (14.2+); cpal input from BlackHole on systems without process taps
 /// - Linux: pw-record on the default physical playback sink monitor
 pub struct LoopbackCapture {
     active: Arc<AtomicBool>,
@@ -84,7 +85,7 @@ impl LoopbackCapture {
                 #[cfg(target_os = "linux")]
                 pipewire_loopback_thread(active, buffer, failure);
                 #[cfg(target_os = "macos")]
-                cpal_capture_thread(active, buffer, failure);
+                macos_reference_thread(active, buffer, failure);
                 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
                 {
                     set_failure(&failure, AecFailure::ReferenceLost);
@@ -189,20 +190,20 @@ impl Default for LoopbackCapture {
     }
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn set_failure(failure: &Mutex<Option<AecFailure>>, reason: AecFailure) {
+pub(crate) fn set_failure(failure: &Mutex<Option<AecFailure>>, reason: AecFailure) {
     *lock(failure) = Some(reason);
 }
 
 // ─── Helper: downmix + resample + push to buffer ─────────────────────────
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-fn push_to_buffer(
+pub(crate) fn push_to_buffer(
     data: &[f32],
     channels: usize,
     _device_rate: u32,
@@ -521,6 +522,44 @@ fn pipewire_loopback_thread(
     let _ = reader.join();
     active.store(false, Ordering::Relaxed);
     log::info!("[Loopback] PipeWire default playback monitor stopped");
+}
+
+// ─── macOS: Core Audio process tap, falling back to BlackHole ────────────
+
+/// macOS far-end reference capture.
+///
+/// A Core Audio process tap needs macOS 14.2 and a bundle declaring
+/// `NSAudioCaptureUsageDescription`; [`crate::aec::aec_reference_availability`]
+/// reports whether both hold. Systems without them keep the BlackHole virtual
+/// device capture, so dropping to an older macOS does not silently cost AEC.
+#[cfg(target_os = "macos")]
+fn macos_reference_thread(
+    active: Arc<AtomicBool>,
+    buffer: Arc<Mutex<HeapRb<f32>>>,
+    failure: Arc<Mutex<Option<AecFailure>>>,
+) {
+    if crate::aec::aec_reference_availability().available {
+        crate::macos_tap::capture_thread(active, buffer, failure);
+    } else {
+        log::info!("[Loopback] Process taps unavailable; capturing from BlackHole instead");
+        cpal_capture_thread(active, buffer, failure);
+    }
+}
+
+/// Whether a BlackHole virtual input device is present.
+///
+/// macOS systems without Core Audio process taps use it as the AEC far-end
+/// reference, so its absence is what makes AEC unavailable there.
+#[cfg(target_os = "macos")]
+pub(crate) fn blackhole_device_present() -> bool {
+    use cpal::traits::HostTrait;
+
+    let Ok(devices) = cpal::default_host().input_devices() else {
+        return false;
+    };
+    devices
+        .filter_map(|dev| crate::device_name(&dev))
+        .any(|name| name.to_lowercase().contains("blackhole"))
 }
 
 // ─── macOS: cpal capture from BlackHole ──────────────────────────────────

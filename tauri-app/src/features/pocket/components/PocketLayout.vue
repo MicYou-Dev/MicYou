@@ -100,15 +100,8 @@ const portValue = (e: Event) => Number((e.target as HTMLInputElement).value);
 <template>
   <div class="w-max flex flex-col gap-1.5">
     <div data-blur-region class="h-10 flex items-center haze-surface rounded-2xl px-3 gap-2">
-      <!-- Window Controls (macOS: left) -->
-      <template v-if="isMacOS">
-        <button @click="emit('minimize')" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors shrink-0">
-          <Minus class="w-3.5 h-3.5 text-on-surface" />
-        </button>
-        <button @click="emit('close')" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-error/20 hover:text-error transition-colors shrink-0">
-          <X class="w-3.5 h-3.5 text-on-surface" />
-        </button>
-      </template>
+      <!-- macOS uses the native window controls; keep their footprint clear -->
+      <div v-if="isMacOS" class="macos-titlebar-spacer-pocket shrink-0" />
 
       <!-- Status Dot -->
       <div class="w-2 h-2 rounded-full shrink-0 pointer-events-none" :class="statusColor" />

@@ -5,10 +5,10 @@
   "version": "2.1.1",
   "identifier": "com.lanrhyme.micyou",
   "build": {
-    "beforeDevCommand": "bun run prepare-sidecars:dev && bun run dev",
+    "beforeDevCommand": "bun run build-tray-icon && bun run prepare-sidecars:dev && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run sync-version && bun run prepare-sidecars && bun run build",
-    "beforeBundleCommand": "bun run clean-bundles",
+    "beforeBuildCommand": "bun run sync-version && bun run build-tray-icon && bun run prepare-sidecars && bun run build",
+    "beforeBundleCommand": "bun run clean-bundles && bun run build-macos-icon && bun run build-dmg-background",
     "frontendDist": "../dist"
   },
   "app": {
@@ -49,8 +49,7 @@
       "binaries/micyou-tui"
     ],
     "resources": [
-      "resources/*",
-      "resources/alsa/*"
+      "resources/*"
     ],
     "icon": [
       "icons/32x32.png",
@@ -58,6 +57,30 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "files": {
+        "Resources/Assets.car": "icons/Assets.car",
+        "Resources/zh-Hans.lproj": "packaging/InfoPlist/zh-Hans.lproj",
+        "Resources/zh-Hant.lproj": "packaging/InfoPlist/zh-Hant.lproj",
+        "Resources/zh-HK.lproj": "packaging/InfoPlist/zh-HK.lproj"
+      },
+      "dmg": {
+        "background": "packaging/dmg-background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 180
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 180
+        }
+      }
+    }
   }
 }

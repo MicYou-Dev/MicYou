@@ -118,9 +118,10 @@ impl TuiApp {
             level: 0,
             muted: false,
             web_clients: 0,
-            // The desktop backend currently has no macOS loopback reference
-            // implementation, so do not expose a toggle that cannot take effect.
-            aec_runtime_available: micyou_core::settings::aec_supported(),
+            // AEC needs a far-end reference, so only offer the toggle where the
+            // platform can supply one.
+            aec_runtime_available: micyou_core::micyou_audio::aec_reference_availability()
+                .available,
             settings,
             selected_setting: 0,
             chain_index: 0,

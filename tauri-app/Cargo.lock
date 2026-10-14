@@ -3488,10 +3488,12 @@ dependencies = [
 name = "micyou-audio"
 version = "2.1.1"
 dependencies = [
+ "core-foundation 0.10.1",
  "cpal",
  "log",
  "micyou-infer",
  "nnnoiseless",
+ "objc",
  "ringbuf",
  "rubato",
  "rustfft",
@@ -3533,6 +3535,7 @@ dependencies = [
  "micyou-plugin",
  "micyou-protocol",
  "notify-rust",
+ "objc",
  "open",
  "opus-decoder",
  "plist",

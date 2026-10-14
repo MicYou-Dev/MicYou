@@ -11,9 +11,9 @@ import {
 } from '@lucide/vue';
 
 // Composables managing server connection, audio, theme, window, and system tray
-import { appWindow, command, onEvent } from '@/platform';
+import { appWindow, command, onEvent, openUrl } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
-import { useServer } from './features/connection/composables/useServer';
+import { useServer, type ConnectionMode } from './features/connection/composables/useServer';
 import { useAudio } from './features/audio/composables/useAudio';
 import { useTheme, saveUiPrefs } from './features/theme/composables/useTheme';
 import { useWindow } from './features/window/composables/useWindow';
@@ -21,6 +21,7 @@ import { useTray } from './features/tray/useTray';
 import { useWindowEffects } from './features/window/composables/useWindowEffects';
 import { useWindowTransition } from './features/window/composables/useWindowTransition';
 import { applyPlatformClasses, isMacOS } from './shared/lib/os';
+import { useAppMenu, type AppMenuState } from './features/window/composables/useAppMenu';
 
 // UI components for connection flows, onboarding, and layouts
 import ConnectionErrorDialog from './features/connection/components/ConnectionErrorDialog.vue';
@@ -39,7 +40,12 @@ import { animate, spring } from 'animejs';
 
 applyPlatformClasses();
 
-const { t } = useI18n();
+// macOS drags its windows by the titlebar without a grab affordance, so the
+// header keeps the regular pointer there while Windows and Linux keep the grab
+// cursor.
+const dragSurfaceClass = isMacOS ? 'cursor-default' : 'cursor-grab active:cursor-grabbing';
+
+const { t, locale } = useI18n();
 
 // Initialize shared features
 const audio = useAudio();
@@ -128,6 +134,32 @@ const toggleStreaming = async () => {
 const streamingRef = computed(() => server.isStreaming(server.serverState.value));
 const visibilityRef = computed(() => !win.isHidden.value);
 
+// Handing the GUI over to the CLI/TUI closes this app and opens a terminal, so
+// it is confirmed first. Shared by the tray and the native app menu.
+async function switchToCli() {
+  const confirmSwitch = confirm(t('settings.runMode.confirmSwitch'));
+  if (!confirmSwitch) return;
+  try {
+    await command('switch_to_cli');
+    await win.exitApp();
+  } catch (e) {
+    console.error('switch_to_cli failed:', e);
+    alert(`${t('settings.runMode.switchFailed')}: ${e}`);
+  }
+}
+
+async function switchToTui() {
+  const confirmSwitch = confirm(t('settings.runMode.confirmSwitchTui'));
+  if (!confirmSwitch) return;
+  try {
+    await command('switch_to_tui');
+    await win.exitApp();
+  } catch (e) {
+    console.error('switch_to_tui failed:', e);
+    alert(`${t('settings.runMode.switchFailed')}: ${e}`);
+  }
+}
+
 // Initialize system tray integration
 useTray(
   {
@@ -141,35 +173,121 @@ useTray(
     },
     onToggleStream: () => toggleStreaming(),
     onExit: () => win.exitApp(),
-    onSwitchCli: async () => {
-      const confirmSwitch = confirm(t('settings.runMode.confirmSwitch'));
-      if (!confirmSwitch) return;
-      try {
-        await command('switch_to_cli');
-        await win.exitApp();
-      } catch (e) {
-        console.error('switch_to_cli failed:', e);
-        alert(`${t('settings.runMode.switchFailed')}: ${e}`);
-      }
-    },
-    onSwitchTui: async () => {
-      const confirmSwitch = confirm(t('settings.runMode.confirmSwitchTui'));
-      if (!confirmSwitch) return;
-      try {
-        await command('switch_to_tui');
-        await win.exitApp();
-      } catch (e) {
-        console.error('switch_to_tui failed:', e);
-        alert(`${t('settings.runMode.switchFailed')}: ${e}`);
-      }
-    },
+    onSwitchCli: () => switchToCli(),
+    onSwitchTui: () => switchToTui(),
   },
   visibilityRef,
   streamingRef,
 );
 
+// Settings live in their own window, so the macOS menu cannot call into them
+// directly. A requested section ('about', or 'sponsors' for the sponsors
+// dialog) goes through shared storage: an open settings window picks it up
+// from the storage event, a new one reads it on mount.
+const SETTINGS_REQUEST_KEY = 'micyou_settings_request';
+
+const openSettingsAt = async (section?: string) => {
+  if (section) localStorage.setItem(SETTINGS_REQUEST_KEY, section);
+  await openSettings();
+};
+
+// The settings window follows the stored language through the storage event,
+// which never fires in the window that wrote it, so the locale is set here too.
+const setLanguage = (code: string) => {
+  localStorage.setItem('micyou_language', code);
+  locale.value = code;
+  saveUiPrefs(code);
+};
+
+// Native app menu: the frontend owns its labels, state and actions.
+const appMenuState = computed<AppMenuState>(() => ({
+  windowVisible: !win.isHidden.value,
+  isStreaming: streamingRef.value,
+  isMuted: audio.isMuted.value,
+  isMonitoring: audio.isMonitoringEnabled.value,
+  pocketMode: pocketMode.value,
+  connectionMode: server.connectionMode.value,
+  isAutoBind: server.isAutoBind.value,
+  selectedIp: server.selectedIp.value,
+  interfaces: server.networkInterfaces.value.map((i) => ({ ip: i.ip, name: i.interface_name })),
+  language: locale.value,
+}));
+
+// Help menu targets: the project site hosts the documentation, the upstream
+// repository hosts the issue tracker and the sponsorship programme.
+const WEBSITE_URL = 'https://micyou.top/';
+const DOCS_URL = 'https://micyou.top/en/docs/quick-start';
+const GITHUB_URL = 'https://github.com/LanRhyme/MicYou';
+const ISSUES_URL = 'https://github.com/LanRhyme/MicYou/issues/new';
+
+const openExternal = (url: string) => {
+  void openUrl(url).catch((e) => console.error('openUrl failed:', e));
+};
+
+useAppMenu(
+  {
+    onAbout: () => openSettingsAt('about'),
+    onSettings: () => openSettings(),
+    onToggleStream: () => toggleStreaming(),
+    onToggleWindow: async () => {
+      if (win.isHidden.value) {
+        await win.showMainWindow();
+      } else {
+        await win.hideMainWindow();
+      }
+    },
+    onToggleMute: () => audio.toggleMute(),
+    onToggleMonitoring: () => audio.toggleMonitoringEnabled(),
+    onMode: (mode) => {
+      server.connectionMode.value = mode as ConnectionMode;
+    },
+    onInterface: (ip, auto) => {
+      server.selectIp(auto ? '' : ip, auto);
+    },
+    onTogglePocket: () => {
+      pocketMode.value = !pocketMode.value;
+    },
+    onSwitchCli: () => switchToCli(),
+    onSwitchTui: () => switchToTui(),
+    onLanguage: (code) => setLanguage(code),
+    onWebsite: () => openExternal(WEBSITE_URL),
+    onDocs: () => openExternal(DOCS_URL),
+    onGithub: () => openExternal(GITHUB_URL),
+    onIssues: () => openExternal(ISSUES_URL),
+    onSponsors: () => openSettingsAt('sponsors'),
+    onOpenLogDir: async () => {
+      try {
+        await command('open_log_dir');
+      } catch (e) {
+        console.error('open_log_dir failed:', e);
+      }
+    },
+    onExportLog: async () => {
+      try {
+        await command('export_log');
+      } catch (e) {
+        console.error('export_log failed:', e);
+      }
+    },
+  },
+  appMenuState,
+);
+
 // Starting minimized to the tray hides the window right away.
 onMounted(() => void win.launch());
+
+// In-window dialogs pocket mode has to make room for (see the watch below).
+const pocketModalOpen = computed(
+  () =>
+    showOnboarding.value ||
+    win.showCloseConfirm.value ||
+    server.showErrorDialog.value ||
+    server.showQrDialog.value ||
+    server.showDeviceSelector.value ||
+    server.showIpSwitchConfirm.value ||
+    audio.showUdpWarning.value ||
+    audio.showMonitoringWarning.value,
+);
 
 // Window sizing. Full mode is a fixed 800x600 window; pocket mode follows its
 // content, including the expanded menus, so no transparent area is left over.
@@ -212,6 +330,9 @@ function startPocketObserver() {
   const el = pocketContentRef.value;
   if (!el) return;
   pocketObserver = new ResizeObserver(() => {
+    // A dialog has the window at full size; tracking the content then would
+    // shrink it back underneath the dialog.
+    if (pocketModalOpen.value) return;
     if (pocketRaf) cancelAnimationFrame(pocketRaf);
     pocketRaf = requestAnimationFrame(() => void resizePocketToContent());
   });
@@ -225,20 +346,69 @@ function stopPocketObserver() {
   pocketRaf = 0;
 }
 
+// The native window controls sit at a different height per layout, and the
+// resize above makes AppKit restore them, so the layout is re-applied after it.
+async function applyWindowControlLayout(mode: 'full' | 'pocket') {
+  if (!isMacOS) return;
+  try {
+    await command('apply_macos_window_layout', { mode });
+  } catch (e) {
+    console.error('apply_macos_window_layout failed:', e);
+  }
+}
+
 async function enterPocketLayout() {
   await nextTick();
   startPocketObserver();
   await resizePocketToContent();
 }
 
-watch(pocketMode, async (isPocket, wasPocket) => {
-  if (isPocket) {
-    await enterPocketLayout();
-  } else {
+watch(
+  pocketMode,
+  async (isPocket, wasPocket) => {
+    if (isPocket) {
+      if (pocketModalOpen.value) await applyFullSize();
+      else await enterPocketLayout();
+    } else {
+      stopPocketObserver();
+      if (wasPocket) await applyFullSize();
+    }
+    await applyWindowControlLayout(isPocket ? 'pocket' : 'full');
+  },
+  { immediate: true },
+);
+
+// 主窗口内的模态(关闭确认、各类警告、设备/IP 选择器、引导向导)都是窗口内的覆盖层，
+// 在袖珍模式那条窄窗口里会被裁得只剩一条，因此它们打开时把窗口临时还原成 800x600，
+// 关闭后再收回袖珍尺寸。新增主窗口内模态时，必须把它的开关加进 pocketModalOpen。
+watch(pocketModalOpen, async (open) => {
+  if (!pocketMode.value) return;
+  if (open) {
     stopPocketObserver();
-    if (wasPocket) await applyFullSize();
+    await applyFullSize();
+  } else {
+    await enterPocketLayout();
   }
-}, { immediate: true });
+});
+
+// Dock 徽标：串流时显示已连接客户端数（Wi-Fi/USB 模式下即为 1 台设备），
+// 其余时间清除。
+const dockBadge = computed(() => {
+  if (!isMacOS || server.serverState.value !== 'streaming') return null;
+  return String(Math.max(server.webClientCount.value, 1));
+});
+
+watch(
+  dockBadge,
+  async (label) => {
+    try {
+      await command('set_dock_badge', { label });
+    } catch (e) {
+      console.error('set_dock_badge failed:', e);
+    }
+  },
+  { immediate: true },
+);
 
 // Central action button hover animations
 const onCentralBtnHover = () => {
@@ -274,7 +444,7 @@ onUnmounted(() => {
 
     <!-- Pocket Mode -->
     <div v-if="pocketMode" class="pocket-root p-1.5">
-      <div ref="pocketContentRef" class="w-max cursor-grab active:cursor-grabbing" @mousedown="startDrag">
+      <div ref="pocketContentRef" class="w-max" :class="dragSurfaceClass" @mousedown="startDrag">
         <PocketLayout
           :serverState="server.serverState.value"
           :connectionMode="server.connectionMode.value"
@@ -304,17 +474,10 @@ onUnmounted(() => {
     <!-- Full Mode -->
     <div v-else class="absolute inset-0 flex flex-col p-3 gap-3">
       <!-- Header Section -->
-      <div class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 shrink-0 cursor-grab active:cursor-grabbing relative z-30" @mousedown="startDrag">
+      <div class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 shrink-0 relative z-30" :class="dragSurfaceClass" @mousedown="startDrag">
         <div class="flex items-center gap-3">
-          <!-- Window Controls (macOS: left) -->
-          <div v-if="isMacOS" class="flex items-center gap-1 mr-1">
-            <button @click="win.minimizeWindow()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
-              <Minus class="w-4 h-4 text-on-surface" />
-            </button>
-            <button @click="win.requestClose()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-error/20 hover:text-error transition-colors">
-              <X class="w-4 h-4 text-on-surface" />
-            </button>
-          </div>
+          <!-- macOS uses the native window controls; keep their footprint clear -->
+          <div v-if="isMacOS" class="macos-titlebar-spacer mr-1 shrink-0" />
           <div class="w-8 h-8 text-primary pointer-events-none [&>svg]:w-full [&>svg]:h-full" v-html="appIconSvg"></div>
           <div class="flex flex-col pointer-events-none select-none">
             <span class="text-sm font-extrabold text-primary">MicYou Desktop</span>

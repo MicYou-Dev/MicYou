@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Tauri merges these keys into the generated Info.plist.
+
+	     CFBundleIconName points at the icon compiled from icons/MicYou.icon,
+	     which is what lets macOS 26 use the layered Liquid Glass artwork
+	     instead of the flat fallback. CFBundleIconFile is deliberately left
+	     alone: Tauri already sets it to the icon.icns this project produces.
+	     Keep the name in sync with icons/MicYou.icon and the
+	     build-macos-icon.js script, which verifies the three agree. -->
+	<key>CFBundleIconName</key>
+	<string>MicYou</string>
+	<!-- macOS 14.2 and newer build the AEC far-end reference from a Core Audio
+	     process tap of the system playback. This key is mandatory: without it
+	     macOS refuses the authorization request outright and then feeds the tap
+	     silence, so the capture appears to run while producing nothing. -->
+	<!-- macOS 14.2 and newer build the AEC far-end reference from a Core Audio
+	     process tap of the system playback. This key is mandatory: without it
+	     macOS refuses the authorization request outright and then feeds the tap
+	     silence, so the capture appears to run while producing nothing. -->
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>MicYou records system playback to cancel the echo that would otherwise be sent back to your caller.</string>
+	<!-- The desktop app advertises and browses its own mDNS service so the phone can
+	     find it. macOS 15 asks for local network access the first time that happens,
+	     and shows this text in the prompt; the connection silently fails when the
+	     user denies it, so the reason has to be clear. Discoveries use mdns-sd's own
+	     multicast sockets rather than the Bonjour API, which is why no
+	     NSBonjourServices list is declared. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MicYou finds and connects to your phone over the local network.</string>
+	<!-- Switching to the CLI or TUI form drives Terminal through osascript, which
+	     macOS gates behind the automation permission. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>MicYou opens Terminal to run the app in its CLI or TUI form.</string>
+</dict>
+</plist>

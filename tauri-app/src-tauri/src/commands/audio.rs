@@ -38,6 +38,21 @@ pub fn update_audio_settings(
     Ok("Settings updated".to_string())
 }
 
+/// Current AEC availability and state.
+///
+/// Every frontend reads this instead of deciding platform support locally, so the
+/// GUI, the CLI and the TUI cannot disagree about whether AEC can run.
+#[tauri::command]
+pub fn get_aec_status(state: State<'_, ServerState>) -> micyou_core::events::AecStatus {
+    let availability = micyou_core::micyou_audio::aec_reference_availability();
+    let enabled = state.current_dsp_settings().aec_enabled;
+    micyou_core::events::AecStatus {
+        available: availability.available,
+        enabled: enabled && availability.available,
+        reason: availability.reason,
+    }
+}
+
 #[tauri::command]
 pub fn get_audio_settings(state: State<'_, ServerState>) -> AudioDspSettings {
     state.current_dsp_settings()

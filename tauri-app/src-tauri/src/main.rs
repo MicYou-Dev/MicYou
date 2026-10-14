@@ -23,6 +23,9 @@ mod events;
 mod host;
 #[cfg(target_os = "linux")]
 mod kwin_effects;
+mod macos_dock;
+mod macos_window;
+mod menubar;
 mod tray;
 mod window;
 

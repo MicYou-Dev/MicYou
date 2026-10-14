@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "MicYou",
+        "width": 800,
+        "height": 600,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "resizable": false,
+        "transparent": true,
+        "shadow": true,
+        "windowEffects": {
+          "effects": [
+            "acrylic",
+            "blur"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,9 +1,16 @@
 import { nextTick, reactive, ref, watch } from 'vue';
-import { command, emitToWindow, onEvent, type UnlistenFn } from '@/platform';
-import { isMacOS } from '@/shared/lib/os';
+import { command, emitToWindow } from '@/platform';
+import { useAecStatus } from '@/features/audio/composables/useAecStatus';
 
-// AEC runs on Linux and Windows; macOS has no backend for it.
-export const isAecSupported = !isMacOS;
+// AEC availability comes from the backend, so the GUI, the CLI and the TUI share
+// one answer instead of each deciding what the platform supports. The singleton
+// owns the `aec-status-changed` listener for the life of the app, which is why
+// this module no longer tracks the event itself.
+const {
+  aecSupported: isAecSupported,
+  aecAvailable: aecRuntimeAvailable,
+  aecReason,
+} = useAecStatus();
 
 // Single source of truth for audio / DSP defaults: both the initial state and
 // "restore defaults" use it, so a new field only has to be added here.
@@ -33,7 +40,6 @@ const DEFAULT_AUDIO_SETTINGS = () => ({
 
 // One settings window per webview, so module state is the window's state.
 const settings = reactive(DEFAULT_AUDIO_SETTINGS());
-const aecRuntimeAvailable = ref(true);
 const suppressAutosave = ref(false);
 
 /** The main window follows the output device chosen here. */
@@ -46,10 +52,10 @@ function notifyOutputDevice(device: string) {
 /** AEC is pinned first where it is supported and dropped elsewhere. */
 function normalizeAec() {
   const chain = settings.processingChain ?? [];
-  settings.processingChain = isAecSupported
+  settings.processingChain = isAecSupported.value
     ? ['AEC', ...chain.filter((i) => i !== 'AEC')]
     : chain.filter((i) => i !== 'AEC');
-  if (!isAecSupported) settings.aecEnabled = false;
+  if (!isAecSupported.value) settings.aecEnabled = false;
 }
 
 async function loadSettings() {
@@ -92,7 +98,7 @@ async function syncSettingsToBackend() {
     await command('update_audio_settings', {
       settings: {
         gain: settings.gain,
-        aecEnabled: isAecSupported ? settings.aecEnabled : false,
+        aecEnabled: isAecSupported.value ? settings.aecEnabled : false,
         nsEnabled: settings.nsEnabled,
         nsType: settings.nsType,
         nsIntensity: settings.nsIntensity,
@@ -105,7 +111,7 @@ async function syncSettingsToBackend() {
         vadEnabled: settings.vadEnabled,
         vadThreshold: settings.vadThreshold,
         outputBufferMs: settings.outputBufferMs,
-        processingChain: isAecSupported
+        processingChain: isAecSupported.value
           ? settings.processingChain
           : settings.processingChain.filter((i) => i !== 'AEC'),
         equalizer: settings.equalizer,
@@ -151,20 +157,14 @@ async function resetAudioSettings() {
   saveSettings();
 }
 
-/** Keeps the AEC availability reported by the running server up to date. */
-async function trackAecStatus(): Promise<UnlistenFn> {
-  return onEvent('aec-status-changed', (payload) => {
-    aecRuntimeAvailable.value = payload.available;
-  });
-}
-
 export function useAudioSettings() {
   return {
     settings,
+    isAecSupported,
     aecRuntimeAvailable,
+    aecReason,
     loadSettings,
     syncSettingsToBackend,
     resetAudioSettings,
-    trackAecStatus,
   };
 }

@@ -264,6 +264,24 @@
     background-color: hsl(var(--surface-container) / 0.3) !important;
   }
 
+  /* macOS draws the native window controls inside the header, so the header has to
+     leave exactly the room the removed in-app control pair used to take: two 28px
+     buttons plus their gap, which is 28 + 4 + 28 = 60px in full mode and
+     28 + 8 + 28 = 64px in pocket mode. The backend places the real controls with
+     the matching inset in src-tauri/src/macos_window.rs. */
+  .platform-macos {
+    --macos-titlebar-safe-area: 60px;
+    --macos-titlebar-safe-area-pocket: 64px;
+  }
+
+  .macos-titlebar-spacer {
+    width: var(--macos-titlebar-safe-area);
+  }
+
+  .macos-titlebar-spacer-pocket {
+    width: var(--macos-titlebar-safe-area-pocket);
+  }
+
   .platform-macos.style-glass {
     --haze-backdrop: none;
     --haze-bg: hsl(var(--surface-bright) / 0.5);

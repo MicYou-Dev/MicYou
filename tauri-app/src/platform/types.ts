@@ -261,6 +261,44 @@ export interface TrayState {
   isStreaming: boolean;
 }
 
+/** Native macOS menu entries the frontend may request by name. */
+export type PredefinedName =
+  | 'services'
+  | 'hide'
+  | 'hideOthers'
+  | 'showAll'
+  | 'quit'
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'minimize'
+  | 'maximize'
+  | 'fullscreen'
+  | 'closeWindow';
+
+/**
+ * One node of the macOS app menu descriptor.
+ *
+ * The whole menu is sent on every change (never as a patch), so the backend
+ * stays stateless: the frontend owns the labels, the checked state and the
+ * behaviour, and only the native menu object lives in Rust.
+ */
+export type MenuNode =
+  | { kind: 'item'; id: string; label: string; enabled?: boolean; accelerator?: string }
+  | { kind: 'check'; id: string; label: string; checked: boolean; enabled?: boolean }
+  | { kind: 'separator' }
+  | {
+      kind: 'submenu';
+      label: string;
+      enabled?: boolean;
+      role?: 'window' | 'help';
+      items: MenuNode[];
+    }
+  | { kind: 'predefined'; name: PredefinedName; label?: string };
+
 export interface BlurRect {
   x: number;
   y: number;

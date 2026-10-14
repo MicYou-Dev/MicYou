@@ -299,3 +299,24 @@ pub fn hide_main_window(app: AppHandle) -> Result<(), String> {
     win.hide().map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Places the macOS traffic lights for the active header layout. No-op elsewhere.
+#[tauri::command]
+pub fn apply_macos_window_layout(app: AppHandle, mode: String) -> Result<(), String> {
+    let mode = crate::macos_window::Mode::parse(&mode);
+    let win = main_window(&app)?;
+    crate::macos_window::apply(&win.as_ref().window(), mode)
+}
+
+/// Sets the macOS Dock badge label (`None` clears it). No-op elsewhere.
+#[tauri::command]
+pub fn set_dock_badge(app: AppHandle, label: Option<String>) -> Result<(), String> {
+    let win = main_window(&app)?;
+    crate::macos_dock::set_badge(&win.as_ref().window(), label)
+}
+
+/// Replaces the app-wide menu with the descriptor the frontend sent. No-op elsewhere.
+#[tauri::command]
+pub fn set_app_menu(app: AppHandle, menu: Vec<crate::menubar::MenuNode>) -> Result<(), String> {
+    crate::menubar::apply(&app, &menu)
+}

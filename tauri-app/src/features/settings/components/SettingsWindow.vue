@@ -175,6 +175,7 @@ import { useAudioSettings } from '../composables/useAudioSettings';
 import { useLanguageSetting } from '../composables/useLanguageSetting';
 import { usePluginPanels } from '../composables/usePluginPanels';
 import { useRestoreDefaults } from '../composables/useRestoreDefaults';
+import { useSettingsRequest } from '../composables/useSettingsRequest';
 import AboutSection from './sections/AboutSection.vue';
 import AppearanceSection from './sections/AppearanceSection.vue';
 import AudioSection from './sections/AudioSection.vue';
@@ -193,7 +194,7 @@ const windowEffects = useWindowEffects({
 const windowRoot = ref<HTMLElement | null>(null);
 const transition = useWindowTransition(windowRoot, { suspendEffects: windowEffects.suspend });
 
-const { settings, loadSettings, trackAecStatus } = useAudioSettings();
+const { settings, loadSettings } = useAudioSettings();
 const { saveUiPrefs } = useLanguageSetting();
 const restore = useRestoreDefaults();
 const { panels: pluginPanels, refresh: refreshPlugins } = usePluginPanels(locale);
@@ -283,6 +284,11 @@ onMounted(async () => {
   void refreshPlugins();
   // Refresh from the shared settings.json so CLI-side changes show up
   await loadSettings();
-  await track(trackAecStatus());
+});
+
+// The macOS app menu asks for a section, or for the sponsors dialog that lives
+// in the about section, through shared storage.
+useSettingsRequest((section) => {
+  if (baseSections.some((s) => s.id === section)) currentSection.value = section;
 });
 </script>
