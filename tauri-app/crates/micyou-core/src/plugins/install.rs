@@ -483,6 +483,10 @@ impl PluginHost {
     /// Download a plugin zip from the market and install it. Blocking; run
     /// it off the async runtime.
     pub fn install_from_url(self: &Arc<Self>, id: &str, zip_url: &str) -> Result<String, String> {
+        // The id names the temp file below; it comes from the market listing.
+        if !micyou_plugin::manifest::validate_plugin_id(id) {
+            return Err(format!("invalid plugin id {id:?}"));
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         download_cancellations().insert(id.to_string(), cancel.clone());
         let temp_zip = std::env::temp_dir().join(format!("micyou-market-{id}.zip"));

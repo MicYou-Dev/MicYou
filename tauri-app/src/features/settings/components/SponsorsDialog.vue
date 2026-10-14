@@ -1,6 +1,6 @@
 <template>
   <Transition name="dialog">
-  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" @click.self="close">
+  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs" @click.self="close">
     <div class="bg-surface rounded-3xl w-full max-w-lg shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
       <!-- Header -->
       <div class="flex justify-between items-center p-6 bg-surface">
@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { X, Heart } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
+import { command } from '@/platform';
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits(['close']);
@@ -89,7 +89,7 @@ const fetchSponsors = async () => {
   error.value = null;
   
   try {
-    const res: string = await invoke('get_sponsors');
+    const res: string = await command('get_sponsors');
     const data = JSON.parse(res);
     if (data.ec === 200 && data.data && data.data.list) {
       const list = data.data.list;

@@ -22,16 +22,15 @@ pub struct NetworkManager {
     service_fullname: String,
 }
 
-
 impl NetworkManager {
-    pub fn start_mdns(port: u16, bind_address: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn start_mdns(port: u16, bind_address: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Self::start_mdns_helper(bind_address, port, MDNS_SERVICE_TYPE)
     }
 
     pub fn start_web_mdns(
         port: u16,
         bind_address: &str,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Self::start_mdns_helper(bind_address, port, micyou_protocol::MDNS_WEB_SERVICE_TYPE)
     }
 
@@ -83,7 +82,7 @@ impl NetworkManager {
         bind_address: &str,
         port: u16,
         service_type: &str,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mdns = ServiceDaemon::new()?;
 
         let host_name = hostname::get()?

@@ -14,9 +14,9 @@ path = "src/main.rs"
 micyou-core = { workspace = true, features = ["headless-host", "vbcable", "web-server"] }
 
 clap.workspace = true
-serde_json.workspace = true
-crossterm = "0.28.1"
-ratatui = "0.29.0"
+log.workspace = true
+crossterm = "0.29"
+ratatui = "0.30"
 sysinfo = "0.39.6"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

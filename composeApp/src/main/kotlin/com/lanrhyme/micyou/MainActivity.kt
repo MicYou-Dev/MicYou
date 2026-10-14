@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lanrhyme.micyou.ui.background.BackgroundImagePicker
 import com.lanrhyme.micyou.audio.AudioEngine
 import com.lanrhyme.micyou.service.AudioService
 import com.lanrhyme.micyou.theme.isDarkThemeActive
@@ -49,8 +50,6 @@ import com.lanrhyme.micyou.util.PermissionState
 import com.lanrhyme.micyou.util.setAppLocale
 import com.lanrhyme.micyou.viewmodel.MainViewModel
 import com.lanrhyme.micyou.viewmodel.StreamState
-import io.github.vinceglb.filekit.FileKit
-import io.github.vinceglb.filekit.dialogs.init
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -145,7 +144,7 @@ class MainActivity : ComponentActivity() {
         Logger.init(this)
         Logger.i("MainActivity", "App started")
 
-        FileKit.init(this)
+        BackgroundImagePicker.register(this)
         val shouldQuickStart = intent?.action == ACTION_QUICK_START
 
         // Initialize permission state
@@ -273,38 +272,19 @@ class MainActivity : ComponentActivity() {
 
         fun wrapContextWithLocale(context: Context, languageCode: String): Context {
             val locale = try {
-                val parts = if (languageCode.contains("-r")) {
-                    languageCode.split("-r", limit = 2)
-                } else if (languageCode.contains("-")) {
-                    languageCode.split("-", limit = 2)
-                } else {
-                    null
+                val parts = when {
+                    languageCode.contains("-r") -> languageCode.split("-r", limit = 2)
+                    languageCode.contains("-") -> languageCode.split("-", limit = 2)
+                    else -> listOf(languageCode)
                 }
-                if (parts != null && parts.size == 2) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        Locale.Builder().setLanguage(parts[0]).setRegion(parts[1]).build()
-                    } else {
-                        @Suppress("DEPRECATION")
-                        Locale(parts[0], parts[1])
-                    }
-                } else {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        Locale.Builder().setLanguage(languageCode).build()
-                    } else {
-                        @Suppress("DEPRECATION")
-                        Locale(languageCode)
-                    }
-                }
+                Locale.Builder().setLanguage(parts[0]).apply {
+                    parts.getOrNull(1)?.let(::setRegion)
+                }.build()
             } catch (_: Exception) {
                 Locale.getDefault()
             }
             val config = Configuration(context.resources.configuration)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                config.setLocale(locale)
-            } else {
-                @Suppress("DEPRECATION")
-                config.locale = locale
-            }
+            config.setLocale(locale)
             return context.createConfigurationContext(config)
         }
     }

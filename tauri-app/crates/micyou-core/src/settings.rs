@@ -24,7 +24,7 @@ use crate::server::ServerState;
 use crate::stats::NetworkStats;
 use crate::transport::tcp::SharedActiveConnection;
 use crate::transport::udp::ActiveAudioSession;
-use cpal::traits::{DeviceTrait, HostTrait};
+use cpal::traits::HostTrait;
 use micyou_audio::dsp::AudioDspSettings;
 use micyou_plugin::PluginEvent;
 use micyou_protocol::micyou::{MessageWrapper, MuteMessage};
@@ -35,7 +35,7 @@ use std::sync::{Arc, RwLock};
 /// Names of the output devices cpal can open, sorted and deduplicated.
 pub fn audio_devices() -> Vec<String> {
     let mut names: Vec<String> = match cpal::default_host().output_devices() {
-        Ok(devices) => devices.filter_map(|dev| dev.name().ok()).collect(),
+        Ok(devices) => devices.filter_map(|dev| micyou_audio::device_name(&dev)).collect(),
         Err(e) => {
             log::warn!("[Audio] listing output devices failed: {e}");
             Vec::new()
@@ -84,6 +84,7 @@ pub struct StreamingStatus {
     pub is_server_running: bool,
     pub is_connected: bool,
     pub is_muted: bool,
+    pub platform: crate::transport::tcp::ClientPlatform,
 }
 
 /// Handles on the live server state that runtime controls act on.
@@ -254,7 +255,12 @@ impl ServerState {
             self.lifecycle.lock().await.phase(),
             crate::server::lifecycle::ServerLifecyclePhase::Running
         );
-        let control_connected = self.active_connection.lock().await.is_some();
+        let control_platform = self
+            .active_connection
+            .lock()
+            .await
+            .as_ref()
+            .map(|connection| connection.platform);
         let audio_active = !matches!(
             *self
                 .active_audio_session
@@ -274,8 +280,9 @@ impl ServerState {
 
         StreamingStatus {
             is_server_running,
-            is_connected: control_connected || audio_active || web_connected,
+            is_connected: control_platform.is_some() || audio_active || web_connected,
             is_muted: self.network_stats.is_muted(),
+            platform: control_platform.unwrap_or_default(),
         }
     }
 }
@@ -335,6 +342,7 @@ mod tests {
             raw_socket: Default::default(),
             connection_id: 1,
             takeover_token: CancellationToken::new(),
+            platform: Default::default(),
         });
 
         let busy = state.active_connection.lock().await;

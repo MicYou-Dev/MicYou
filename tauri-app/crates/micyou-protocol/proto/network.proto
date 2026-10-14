@@ -12,6 +12,17 @@ message MessageWrapper {
     // Cross-device plugin messaging (see docs/plugins/api-reference.md).
     // Unknown to legacy clients: proto3 skips it, so the wire stays compatible.
     PluginMessage pluginMessage = 7;
+    // Desktop to phone once a second while connected, so the phone can show link quality.
+    // Unknown to legacy clients: proto3 skips it, so the wire stays compatible.
+    StatsMessage stats = 8;
+}
+
+// Receive-side link statistics measured by the desktop.
+message StatsMessage {
+    int32 rttMs = 1;        // smoothed ping/pong round trip, 0 until the first pong
+    float jitterMs = 2;     // audio packet arrival jitter
+    float packetLoss = 3;   // fraction of audio packets lost, 0.0 to 1.0
+    int32 latencyMs = 4;    // estimated end-to-end latency: receive buffer plus round trip
 }
 
 // Cross-device plugin message: request/response and one-way events between
@@ -32,6 +43,8 @@ message PluginMessage {
 message ConnectMessage {
     // Zero identifies legacy clients that predate transport session isolation.
     int64 sessionId = 1;
+    // Client platform: "android" or "ios". Empty for clients that predate this field.
+    string platform = 2;
 }
 
 message MuteMessage {

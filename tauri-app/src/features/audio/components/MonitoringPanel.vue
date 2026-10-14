@@ -5,7 +5,7 @@
     <div class="flex items-center space-x-2">
       <ActivityIcon class="w-5 h-5 text-primary" />
       <h3 class="text-sm font-bold text-on-surface uppercase tracking-wider">{{ $t('app.monitoring.title') }}</h3>
-      <div class="flex-grow"></div>
+      <div class="grow"></div>
       <div class="w-2 h-2 rounded-full" :class="statusColor"></div>
     </div>
 

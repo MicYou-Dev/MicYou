@@ -15,6 +15,7 @@
 
 mod commands;
 mod events;
+mod logger;
 mod plugin_cmds;
 mod serve;
 
@@ -139,6 +140,10 @@ async fn main() {
     micyou_core::platform::alsa::filter_alsa_stderr();
 
     let cli = Cli::parse();
+    logger::init(match cli.command {
+        Commands::Serve { quiet: false, .. } => log::LevelFilter::Info,
+        _ => log::LevelFilter::Warn,
+    });
     let result = match cli.command {
         Commands::Serve {
             port,

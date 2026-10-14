@@ -1,9 +1,9 @@
 <template>
   <Transition name="dialog">
-    <div v-if="show && details" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-background/60 backdrop-blur-md" @click="emit('dismiss')"></div>
+    <div v-if="show && details" class="fixed inset-0 z-100 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-background/70" @click="emit('dismiss')"></div>
 
-      <div class="relative w-full max-w-md bg-surface-bright/95 backdrop-blur-2xl rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[80vh]">
+      <div class="relative w-full max-w-md bg-surface-bright rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[80vh]">
         <div class="absolute -top-32 -right-32 w-64 h-64 bg-error/15 rounded-full blur-[80px] pointer-events-none"></div>
         <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-tertiary/10 rounded-full blur-[80px] pointer-events-none"></div>
 
@@ -62,8 +62,8 @@
 </template>
 
 <script setup lang="ts">
+import { openUrl } from '@/platform';
 import type { ConnectionErrorDetails } from '../utils/connectionError';
-import { openUrl } from '@tauri-apps/plugin-opener';
 
 defineProps<{
   show: boolean;
@@ -79,18 +79,3 @@ const openHelp = (url: string) => {
   void openUrl(url);
 };
 </script>
-
-<style scoped>
-.dialog-enter-active,
-.dialog-leave-active {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.dialog-enter-from,
-.dialog-leave-to {
-  opacity: 0;
-}
-.dialog-enter-from .relative,
-.dialog-leave-to .relative {
-  transform: scale(0.95) translateY(8px);
-}
-</style>

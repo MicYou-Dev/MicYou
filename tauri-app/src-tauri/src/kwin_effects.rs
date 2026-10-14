@@ -322,7 +322,10 @@ struct WindowEffects {
     blur: Vec<BlurRect>,
     shadow_radius: Option<u32>,
     attached: Option<Surface>,
-    hooked: bool,
+    /// The GTK window the visibility hooks are connected to. A label can
+    /// outlive its window: the settings window is destroyed on close and a
+    /// new one is created under the same label.
+    window: Option<gtk::glib::SendWeakRef<gtk::ApplicationWindow>>,
 }
 
 /// What `sync` managed to apply.
@@ -341,6 +344,13 @@ enum Scope {
 }
 
 impl WindowEffects {
+    fn is_for(&self, window: &gtk::ApplicationWindow) -> bool {
+        self.window
+            .as_ref()
+            .and_then(|weak| weak.upgrade())
+            .is_some_and(|current| &current == window)
+    }
+
     fn wanted(&self) -> bool {
         !self.blur.is_empty() || self.shadow_radius.is_some()
     }
@@ -374,7 +384,13 @@ impl WindowEffects {
         surface.flush()?;
         // Effect state is applied with the next surface commit; ask GTK for a frame.
         window.queue_draw();
-        Ok(Applied { blur: blur.unwrap_or(false), shadow: shadow.unwrap_or(false) })
+        // One effect failing must not undo the other; report it and go on.
+        let applied = |effect: &str, result: Result<bool, String>| {
+            result
+                .inspect_err(|e| log::warn!(target: "window", "{effect} for {label} failed: {e}"))
+                .unwrap_or(false)
+        };
+        Ok(Applied { blur: applied("blur", blur), shadow: applied("shadow", shadow) })
     }
 }
 
@@ -384,10 +400,12 @@ fn effects() -> &'static Mutex<HashMap<String, WindowEffects>> {
 }
 
 fn hook_visibility(label: &str, window: &gtk::ApplicationWindow) {
+    // Both handlers check the window: a destroyed predecessor under the same
+    // label must never touch the attachment of its replacement.
     let unmap_label = label.to_string();
-    window.connect_unmap(move |_| {
+    window.connect_unmap(move |window| {
         if let Ok(mut effects) = effects().lock() {
-            if let Some(entry) = effects.get_mut(&unmap_label) {
+            if let Some(entry) = effects.get_mut(&unmap_label).filter(|e| e.is_for(window)) {
                 entry.attached = None;
             }
         }
@@ -395,7 +413,7 @@ fn hook_visibility(label: &str, window: &gtk::ApplicationWindow) {
     let map_label = label.to_string();
     window.connect_map(move |window| {
         let Ok(mut effects) = effects().lock() else { return };
-        if let Some(entry) = effects.get_mut(&map_label) {
+        if let Some(entry) = effects.get_mut(&map_label).filter(|e| e.is_for(window)) {
             if let Err(e) = entry.sync(&map_label, window, Scope::All) {
                 log::warn!(target: "window", "failed to restore effects for {map_label}: {e}");
             }
@@ -411,9 +429,14 @@ fn update(
 ) -> Result<Applied, String> {
     let mut effects = effects().lock().map_err(|_| "effect state poisoned".to_string())?;
     let entry = effects.entry(label.to_string()).or_default();
-    if !entry.hooked {
+    if !entry.is_for(window) {
+        // A new window under this label: any attachment still points at the
+        // previous window's destroyed surface, and using it would be a
+        // protocol error that makes the compositor drop the connection.
+        // Dropping the proxies sends no requests.
+        entry.attached = None;
+        entry.window = Some(window.downgrade().into());
         hook_visibility(label, window);
-        entry.hooked = true;
     }
     change(entry);
     if !window.is_visible() {

@@ -15,6 +15,7 @@
 
 mod events;
 mod i18n;
+mod logger;
 mod serve;
 mod theme;
 mod tui;

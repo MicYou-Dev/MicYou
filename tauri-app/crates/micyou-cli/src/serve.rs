@@ -39,7 +39,7 @@ pub async fn run(args: ServeArgs) -> Result<(), String> {
 
 async fn run_locked(request: StartRequest, quiet: bool) -> Result<(), String> {
     if request.mode == server::service::ConnectionMode::Usb {
-        println!("Setting up USB (adb) mode on port {}", request.port);
+        println!("Setting up USB mode (adb for Android, usbmuxd for iOS) on port {}", request.port);
         micyou_core::platform::adb::enable_usb_mode(request.port, None)
             .map_err(|e| format!("enable_usb_mode failed: {e}"))?;
     }

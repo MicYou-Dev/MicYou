@@ -13,24 +13,13 @@
  * GNU General Public License for more details.
  */
 
-//! Lookup of files bundled with the desktop app (ONNX models, ONNX Runtime,
-//! ALSA config) across dev trees, installed packages and AppImages.
+//! Lookup of files bundled with the desktop app (ALSA/PipeWire config, model
+//! licenses) across dev trees, installed packages and AppImages.
 
 use std::path::{Path, PathBuf};
 
-/// The GUI crate owns `resources/` and `libs/`; `cargo run` falls back to it.
+/// The GUI crate owns `resources/`; `cargo run` falls back to it.
 const DEV_APP_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src-tauri");
-
-/// Platform-specific ONNX Runtime shared library filename.
-pub const fn ort_runtime_filename() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "onnxruntime.dll"
-    } else if cfg!(target_os = "macos") {
-        "libonnxruntime.dylib"
-    } else {
-        "libonnxruntime.so"
-    }
-}
 
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe()
@@ -38,41 +27,19 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|path| path.parent().map(Path::to_path_buf))
 }
 
-/// Find the ONNX Runtime shared library bundled alongside the application.
-pub fn find_ort_runtime(resource_root: Option<&Path>) -> Option<PathBuf> {
-    let filename = ort_runtime_filename();
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    // Production bundles copy the library into resources/.
-    if let Some(root) = resource_root {
-        candidates.push(root.join(filename));
-        if let Some(parent) = root.parent() {
-            candidates.push(parent.join("libs").join(filename));
-            candidates.push(parent.join(filename));
-        }
-    }
-
-    if let Some(exe_dir) = exe_dir() {
-        candidates.push(exe_dir.join(filename));
-        candidates.push(exe_dir.join("resources").join(filename));
-        candidates.push(exe_dir.join("libs").join(filename));
-        if let Some(prefix) = exe_dir.parent() {
-            let install = prefix.join("lib").join("micyou");
-            candidates.push(install.join("libs").join(filename));
-            candidates.push(install.join("resources").join(filename));
-        }
-    }
-
-    candidates.push(Path::new(DEV_APP_DIR).join("libs").join(filename));
-    candidates.into_iter().find(|p| p.exists())
-}
-
 /// Locate the directory containing MicYou's bundled runtime resources. Linux
 /// packages use /usr/bin + /usr/lib/micyou/resources, AppImage exposes the
 /// same tree below its mount point. `hint` is the frontend's own idea of the
 /// resource directory, if it has one.
 pub fn find_resource_dir(hint: Option<&Path>) -> Option<PathBuf> {
-    const MARKERS: [&str; 2] = ["purevox6.onnx", "aec7_ep0185.onnx"];
+    // The ALSA/PipeWire config is the canonical marker; the legacy .onnx
+    // markers keep pre-port install trees (which still ship the model files)
+    // resolvable after an in-place upgrade.
+    const MARKERS: [&str; 3] = [
+        "alsa/micyou-pipewire.conf",
+        "purevox6.onnx",
+        "aec7_ep0185.onnx",
+    ];
 
     let mut candidates = Vec::new();
     if let Some(dir) = hint {

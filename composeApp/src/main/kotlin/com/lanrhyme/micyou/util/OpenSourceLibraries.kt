@@ -43,7 +43,6 @@ val OpenSourceLibraries = listOf(
     OpenSourceLibrary("Ktor", "Apache License 2.0"),
     OpenSourceLibrary("Material 3 Components", "Apache License 2.0"),
     OpenSourceLibrary("MaterialKolor", "MIT License"),
-    OpenSourceLibrary("FileKit", "MIT License"),
     OpenSourceLibrary("kotlinx-datetime", "Apache License 2.0"),
     OpenSourceLibrary("kotlinx-serialization", "Apache License 2.0")
 )

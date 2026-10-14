@@ -43,6 +43,7 @@ dependencyResolutionManagement {
                 // API 21 (Android 5.0) 兼容级别
                 version("agp", "8.9.1")
                 version("kotlin", "2.3.10")
+                version("android-compileSdk", "36")
                 version("android-minSdk", "21")
                 version("android-targetSdk", "29")
                 version("androidx-activity", "1.8.2")
@@ -54,6 +55,7 @@ dependencyResolutionManagement {
                 version("ktor", "3.0.3")
                 version("kotlinx-serialization", "1.7.3")
                 version("materialKolor", "1.7.1")
+                version("haze", "1.0.0")
             }
             // 预留：未来可添加 isApi19Compat 的更低版本配置
         }

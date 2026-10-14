@@ -89,7 +89,7 @@ function label(f: { key: string; label?: string | null }) {
           @click="values[f.key] = !values[f.key]"
         >
           <span
-            class="block w-5 h-5 rounded-full bg-white shadow transition-transform"
+            class="block w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
             :class="values[f.key] ? 'translate-x-[18px]' : 'translate-x-[2px]'"
           />
         </button>
@@ -115,7 +115,7 @@ function label(f: { key: string; label?: string | null }) {
         <div class="text-sm text-on-surface">{{ label(f) }}</div>
         <select
           v-model="values[f.key] as string"
-          class="w-full px-3 py-1.5 rounded-lg bg-surface-variant text-on-surface text-sm outline-none"
+          class="w-full px-3 py-1.5 rounded-lg bg-surface-variant text-on-surface text-sm outline-hidden"
         >
           <option v-for="o in f.options" :key="o.value" :value="o.value">
             {{ o.label || o.value }}
@@ -128,7 +128,7 @@ function label(f: { key: string; label?: string | null }) {
         <input
           v-model="values[f.key] as string"
           type="text"
-          class="w-full px-3 py-1.5 rounded-lg bg-surface-variant text-on-surface text-sm outline-none"
+          class="w-full px-3 py-1.5 rounded-lg bg-surface-variant text-on-surface text-sm outline-hidden"
         />
       </div>
     </div>
@@ -140,9 +140,9 @@ function label(f: { key: string; label?: string | null }) {
         :disabled="saving"
         @click="save"
       >
-        {{ saving ? '保存中…' : '保存' }}
+        {{ saving ? $t('plugins.saving') : $t('plugins.save') }}
       </button>
-      <span v-if="saved" class="text-xs text-primary">已保存</span>
+      <span v-if="saved" class="text-xs text-primary">{{ $t('plugins.configSaved') }}</span>
     </div>
   </div>
 </template>

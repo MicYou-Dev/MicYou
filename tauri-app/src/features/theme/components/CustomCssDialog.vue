@@ -1,6 +1,6 @@
 <template>
   <Transition name="dialog">
-    <div v-if="isOpen" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" @click.self="close">
+    <div v-if="isOpen" class="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs" @click.self="close">
       <div class="theme-editor flex h-[80vh] w-full max-w-3xl flex-col backdrop-blur-2xl">
         <div class="flex items-center justify-between border-b border-surface-variant/20 bg-surface/50 p-6">
           <div>

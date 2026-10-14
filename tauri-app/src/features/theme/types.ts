@@ -6,12 +6,6 @@ export interface HslColor {
   l: number;
 }
 
-export interface SystemAccentColor {
-  hex: string;
-  source: string;
-  supported: boolean;
-}
-
 export interface ThemeManifest {
   id: string;
   name: string;

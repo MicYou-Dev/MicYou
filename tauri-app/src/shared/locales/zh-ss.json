@@ -10,7 +10,9 @@
       "connecting": "等待设备连接...",
       "starting": "服务启动中...",
       "ready": "准备就绪",
-      "streamingDesc": "已成功连接至 Android 设备",
+      "streamingDesc": "已成功连接至设备",
+      "streamingDescAndroid": "已成功连接至 Android 设备",
+      "streamingDescIos": "已成功连接至 iOS 设备",
       "connectingDesc": "正在监听端口 {port}",
       "startingDesc": "正在初始化音频服务，请稍候",
       "readyDesc": "点击来开始呀",
@@ -47,7 +49,6 @@
       "aecDisabled": "AEC 不可用项，已自动停用项",
       "aecDisabledInferenceFailed": "AEC 音频处理失败项，已自动停用项",
       "aecDisabledModelLoadFailed": "AEC AI 模型加载失败项，已自动停用项",
-      "aecDisabledModelMissing": "未找到 AEC AI 模型项，已自动停用项",
       "aecDisabledPermissionDenied": "未获录制系统音频授权项，AEC 已自动停用项",
       "aecDisabledPipeWireUnavailable": "PipeWire 不可用项，AEC 已自动停用项",
       "aecDisabledReferenceLost": "AEC 音频参考流已中断项，已自动停用项",
@@ -283,7 +284,7 @@
       "copied": "已誊写完毕",
       "exportLog": "出口日志记录档案",
       "introTitle": "软件介绍项",
-      "introText": "麦克风你是一个打开来源微型手机工具那转弯你的安卓设备进入一个高质量微型手机为了你的计算机， 基于在安卓麦克风， 它支持 无线保真度 (传输控制协定)， 蓝色牙齿， 和 通用串行总线式 联系, 提供低延迟声音的传播"
+      "introText": "麦克风你是一个打开来源微型手机工具那转弯你的安卓或 iOS 设备进入一个高质量微型手机为了你的计算机， 基于在安卓麦克风， 它支持 无线保真度 (传输控制协定)， 蓝色牙齿， 和 通用串行总线式 联系, 提供低延迟声音的传播"
     },
     "runMode": {
       "title": "运行模式项",
@@ -560,6 +561,7 @@
       "checkAntivirus": "检查防毒或安全软体设定",
       "checkUsbCable": "检查通用串行总线式缆线连线",
       "enableUsbDebugging": "在安卓开发者选项中启用通用串行总线式侦错",
+      "connectIosOverUsb": "iPhone 或 iPad：打开 MicYou，电脑选择「USB 数据线」后点击连接；Windows 还需要安装 iTunes",
       "runAdbCommand": "在电脑上执行此指令：%s",
       "checkAdbInstalled": "确保电脑上已安装安卓调试桥接",
       "runAdbManually": "手动执行：%s",
@@ -575,7 +577,7 @@
   },
   "onboarding": {
     "title": "欢迎使用麦克风你",
-    "desc": "您似乎是第一次使用麦克风你，本应用可以将您的安卓设备通过无线保真度、蓝色牙齿或者通用串行总线式变成电脑的高质量微型电话",
+    "desc": "您似乎是第一次使用麦克风你，本应用可以将您的安卓或 iOS 设备通过无线保真度、蓝色牙齿或者通用串行总线式变成电脑的高质量微型电话",
     "quickStart": "快速入门指南标题项",
     "step1Title": "1. 安装桌面应用程序项",
     "step1Desc": "在电脑上下载并安装麦克风你桌面应用程序项",
@@ -669,6 +671,17 @@
     "uninstallConfirm": "真卸 {name}？",
     "marketSearch": "搜铁插件商店",
     "marketAll": "全铁",
-    "marketContribute": "贡献铁插件"
+    "marketContribute": "贡献铁插件",
+    "saving": "存着…",
+    "importPreview": {
+      "title": "装这个插件？",
+      "name": "名字",
+      "version": "版本",
+      "author": "谁写的",
+      "license": "许可",
+      "runtime": "类型",
+      "capabilities": "要的权限",
+      "none": "（没有）"
+    }
   }
 }

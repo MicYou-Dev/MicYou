@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watchEffect, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useStorage, onClickOutside } from '@vueuse/core';
-import { LogicalSize } from '@tauri-apps/api/window';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { useI18n } from 'vue-i18n';
 
 // UI icons imported from lucide-vue
@@ -15,14 +11,17 @@ import {
 } from '@lucide/vue';
 
 // Composables managing server connection, audio, theme, window, and system tray
+import { appWindow, command, onEvent, openUrl } from '@/platform';
+import { useListeners } from '@/shared/lib/listeners';
 import { useServer, type ConnectionMode } from './features/connection/composables/useServer';
 import { useAudio } from './features/audio/composables/useAudio';
 import { useTheme, saveUiPrefs } from './features/theme/composables/useTheme';
-import { useWindow } from './shared/composables/useWindow';
-import { useTray } from './shared/composables/useTray';
-import { useWindowEffects } from './shared/composables/useWindowEffects';
-import { applyPlatformClasses, isMacOS } from './shared/lib/platform';
-import { useAppMenu, type AppMenuState } from './shared/composables/useAppMenu';
+import { useWindow } from './features/window/composables/useWindow';
+import { useTray } from './features/tray/useTray';
+import { useWindowEffects } from './features/window/composables/useWindowEffects';
+import { useWindowTransition } from './features/window/composables/useWindowTransition';
+import { applyPlatformClasses, isMacOS } from './shared/lib/os';
+import { useAppMenu, type AppMenuState } from './features/window/composables/useAppMenu';
 
 // UI components for connection flows, onboarding, and layouts
 import ConnectionErrorDialog from './features/connection/components/ConnectionErrorDialog.vue';
@@ -31,18 +30,19 @@ import AudioRing from './features/audio/components/AudioRing.vue';
 import MonitoringPanel from './features/audio/components/MonitoringPanel.vue';
 import OnboardingWizard from './features/onboarding/components/OnboardingWizard.vue';
 import PocketLayout from './features/pocket/components/PocketLayout.vue';
-import CloseConfirmDialog from './shared/components/CloseConfirmDialog.vue';
-import UdpWarningDialog from './shared/components/UdpWarningDialog.vue';
-import MonitoringWarningDialog from './shared/components/MonitoringWarningDialog.vue';
+import CloseConfirmDialog from './features/window/components/CloseConfirmDialog.vue';
+import UdpWarningDialog from './features/connection/components/UdpWarningDialog.vue';
+import MonitoringWarningDialog from './features/audio/components/MonitoringWarningDialog.vue';
 
 // Raw asset content and animation utilities
 import appIconSvg from './shared/assets/app_icon.svg?raw';
-import anime from 'animejs';
+import { animate, spring } from 'animejs';
 
 applyPlatformClasses();
 
-// macOS drags its windows by the titlebar without a grab affordance, so the header keeps
-// the regular pointer there while Windows and Linux keep the grab cursor.
+// macOS drags its windows by the titlebar without a grab affordance, so the
+// header keeps the regular pointer there while Windows and Linux keep the grab
+// cursor.
 const dragSurfaceClass = isMacOS ? 'cursor-default' : 'cursor-grab active:cursor-grabbing';
 
 const { t, locale } = useI18n();
@@ -53,7 +53,6 @@ const server = useServer({ audioLevel: audio.audioLevel, isMuted: audio.isMuted 
 const theme = useTheme();
 // The CLI/TUI read language and theme color from ui.json.
 onMounted(() => saveUiPrefs());
-const win = useWindow();
 
 /**
  * Handles custom window dragging. Uses custom Win32 loop on Windows, falls back to Tauri API on other OSs.
@@ -64,11 +63,11 @@ const startDrag = async (e: MouseEvent) => {
   const target = e.target as HTMLElement;
   if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
   try {
-    await invoke('start_window_drag');
+    await command('start_window_drag');
   } catch {
     // Non-Windows fallback to Tauri's native startDragging
     try {
-      await win.appWindow.startDragging();
+      await appWindow.startDragging();
     } catch (err) {
       console.error('Drag failed:', err);
     }
@@ -77,11 +76,6 @@ const startDrag = async (e: MouseEvent) => {
 
 // References to HTML elements for animations
 const centralBtnRef = ref<HTMLButtonElement | null>(null);
-const glowRef = ref<HTMLDivElement | null>(null);
-const statusDotRef = ref<HTMLDivElement | null>(null);
-
-let breatheAnim: ReturnType<typeof anime> | null = null;
-let dotPulseAnim: ReturnType<typeof anime> | null = null;
 
 // App wizard and pocket mode settings
 const showOnboarding = ref(localStorage.getItem('micyou_onboarding_completed') !== 'true');
@@ -89,24 +83,26 @@ const showOnboarding = ref(localStorage.getItem('micyou_onboarding_completed') !
 // output device chosen there.
 const openSettings = async () => {
   try {
-    await invoke('open_settings_window', { title: t('settings.title') });
+    await command('open_settings_window', { title: t('settings.title') });
   } catch (e) {
     console.error('open_settings_window failed:', e);
   }
 };
-let unlistenOutputDevice: (() => void) | null = null;
-onMounted(async () => {
-  unlistenOutputDevice = await listen<string>('output-device-changed', (event) => {
-    server.outputDevice.value = event.payload;
-  });
+const track = useListeners();
+onMounted(() => {
+  void track(onEvent('output-device-changed', (payload) => {
+    server.outputDevice.value = payload;
+  }));
 });
-onUnmounted(() => unlistenOutputDevice?.());
 const pocketMode = useStorage('micyou_pocket_mode', false);
-useWindowEffects({
+const windowEffects = useWindowEffects({
   blur: computed(() => theme.uiStyle.value === 'style-glass'),
   // Pocket mode is just the floating bar; the shadow frames the full window.
   shadowRadius: computed(() => (pocketMode.value ? null : 16)),
 });
+const rootRef = ref<HTMLElement | null>(null);
+const transition = useWindowTransition(rootRef, { suspendEffects: windowEffects.suspend });
+const win = useWindow({ exit: transition.exit, enter: transition.enter, prepare: windowEffects.apply });
 
 // IP configuration selector panel behavior
 const ipMenuRef = ref<HTMLDivElement | null>(null);
@@ -127,11 +123,9 @@ onUnmounted(() => window.removeEventListener('blur', closeIpMenu));
 const toggleStreaming = async () => {
   await server.toggleStreaming();
   if (centralBtnRef.value) {
-    anime({
-      targets: centralBtnRef.value,
+    animate(centralBtnRef.value, {
       scale: [1, 0.9, 1.05, 1],
-      duration: 600,
-      easing: 'spring(1, 80, 10, 0)',
+      ease: spring({ mass: 1, stiffness: 80, damping: 10, velocity: 0 }),
     });
   }
 };
@@ -140,13 +134,13 @@ const toggleStreaming = async () => {
 const streamingRef = computed(() => server.isStreaming(server.serverState.value));
 const visibilityRef = computed(() => !win.isHidden.value);
 
-// Handing the GUI over to the CLI/TUI closes this app and opens a terminal, so it
-// is confirmed first. Shared by the tray and the native app menu.
+// Handing the GUI over to the CLI/TUI closes this app and opens a terminal, so
+// it is confirmed first. Shared by the tray and the native app menu.
 async function switchToCli() {
   const confirmSwitch = confirm(t('settings.runMode.confirmSwitch'));
   if (!confirmSwitch) return;
   try {
-    await invoke('switch_to_cli');
+    await command('switch_to_cli');
     await win.exitApp();
   } catch (e) {
     console.error('switch_to_cli failed:', e);
@@ -158,7 +152,7 @@ async function switchToTui() {
   const confirmSwitch = confirm(t('settings.runMode.confirmSwitchTui'));
   if (!confirmSwitch) return;
   try {
-    await invoke('switch_to_tui');
+    await command('switch_to_tui');
     await win.exitApp();
   } catch (e) {
     console.error('switch_to_tui failed:', e);
@@ -171,7 +165,7 @@ useTray(
   {
     onShow: async () => {
       // A minimized window is still "shown"; the tray click brings it back.
-      if (win.isHidden.value || await win.appWindow.isMinimized()) {
+      if (win.isHidden.value || await appWindow.isMinimized()) {
         await win.showMainWindow();
       } else {
         await win.hideMainWindow();
@@ -205,7 +199,7 @@ const setLanguage = (code: string) => {
   saveUiPrefs(code);
 };
 
-// Native app menu: the frontend owns its labels, state and actions
+// Native app menu: the frontend owns its labels, state and actions.
 const appMenuState = computed<AppMenuState>(() => ({
   windowVisible: !win.isHidden.value,
   isStreaming: streamingRef.value,
@@ -263,14 +257,14 @@ useAppMenu(
     onSponsors: () => openSettingsAt('sponsors'),
     onOpenLogDir: async () => {
       try {
-        await invoke('open_log_dir');
+        await command('open_log_dir');
       } catch (e) {
         console.error('open_log_dir failed:', e);
       }
     },
     onExportLog: async () => {
       try {
-        await invoke('export_log');
+        await command('export_log');
       } catch (e) {
         console.error('export_log failed:', e);
       }
@@ -279,28 +273,25 @@ useAppMenu(
   appMenuState,
 );
 
-// Auto-hide window on startup if start minimized is configured in preferences
-onMounted(async () => {
-  if (win.isHidden.value) {
-    void win.hideMainWindow();
-  }
-});
+// Starting minimized to the tray hides the window right away.
+onMounted(() => void win.launch());
 
 // In-window dialogs pocket mode has to make room for (see the watch below).
-const pocketModalOpen = computed(() => (
-  showOnboarding.value
-  || win.showCloseConfirm.value
-  || server.showErrorDialog.value
-  || server.showQrDialog.value
-  || server.showDeviceSelector.value
-  || server.showIpSwitchConfirm.value
-  || audio.showUdpWarning.value
-  || audio.showMonitoringWarning.value
-));
+const pocketModalOpen = computed(
+  () =>
+    showOnboarding.value ||
+    win.showCloseConfirm.value ||
+    server.showErrorDialog.value ||
+    server.showQrDialog.value ||
+    server.showDeviceSelector.value ||
+    server.showIpSwitchConfirm.value ||
+    audio.showUdpWarning.value ||
+    audio.showMonitoringWarning.value,
+);
 
 // Window sizing. Full mode is a fixed 800x600 window; pocket mode follows its
 // content, including the expanded menus, so no transparent area is left over.
-const FULL_SIZE = new LogicalSize(800, 600);
+const FULL_SIZE = { width: 800, height: 600 };
 const POCKET_PADDING = 12; // p-1.5 on both sides
 const POCKET_MIN_WIDTH = 240;
 
@@ -310,17 +301,9 @@ let pocketRaf = 0;
 
 // Linux keeps the window resizable with min = max (GTK3 adds 48px to
 // non-resizable windows on Wayland), so every resize moves the bounds too.
-async function setFixedSize(size: LogicalSize) {
-  await win.appWindow.setMinSize(null);
-  await win.appWindow.setMaxSize(null);
-  await win.appWindow.setSize(size);
-  await win.appWindow.setMinSize(size);
-  await win.appWindow.setMaxSize(size);
-}
-
 async function applyFullSize() {
   try {
-    await setFixedSize(FULL_SIZE);
+    await appWindow.setFixedSize(FULL_SIZE.width, FULL_SIZE.height);
   } catch (e) {
     console.error('Failed to resize window:', e);
   }
@@ -330,12 +313,11 @@ async function resizePocketToContent() {
   const el = pocketContentRef.value;
   if (!el) return;
   const rect = el.getBoundingClientRect();
-  const size = new LogicalSize(
-    Math.max(Math.ceil(rect.width + POCKET_PADDING), POCKET_MIN_WIDTH),
-    Math.ceil(rect.height + POCKET_PADDING),
-  );
   try {
-    await setFixedSize(size);
+    await appWindow.setFixedSize(
+      Math.max(Math.ceil(rect.width + POCKET_PADDING), POCKET_MIN_WIDTH),
+      Math.ceil(rect.height + POCKET_PADDING),
+    );
   } catch (e) {
     console.error('Failed to resize pocket window:', e);
   }
@@ -348,6 +330,8 @@ function startPocketObserver() {
   const el = pocketContentRef.value;
   if (!el) return;
   pocketObserver = new ResizeObserver(() => {
+    // A dialog has the window at full size; tracking the content then would
+    // shrink it back underneath the dialog.
     if (pocketModalOpen.value) return;
     if (pocketRaf) cancelAnimationFrame(pocketRaf);
     pocketRaf = requestAnimationFrame(() => void resizePocketToContent());
@@ -367,7 +351,7 @@ function stopPocketObserver() {
 async function applyWindowControlLayout(mode: 'full' | 'pocket') {
   if (!isMacOS) return;
   try {
-    await invoke('apply_macos_window_layout', { mode });
+    await command('apply_macos_window_layout', { mode });
   } catch (e) {
     console.error('apply_macos_window_layout failed:', e);
   }
@@ -379,16 +363,20 @@ async function enterPocketLayout() {
   await resizePocketToContent();
 }
 
-watch(pocketMode, async (isPocket, wasPocket) => {
-  if (isPocket) {
-    if (pocketModalOpen.value) await applyFullSize();
-    else await enterPocketLayout();
-  } else {
-    stopPocketObserver();
-    if (wasPocket) await applyFullSize();
-  }
-  await applyWindowControlLayout(isPocket ? 'pocket' : 'full');
-}, { immediate: true });
+watch(
+  pocketMode,
+  async (isPocket, wasPocket) => {
+    if (isPocket) {
+      if (pocketModalOpen.value) await applyFullSize();
+      else await enterPocketLayout();
+    } else {
+      stopPocketObserver();
+      if (wasPocket) await applyFullSize();
+    }
+    await applyWindowControlLayout(isPocket ? 'pocket' : 'full');
+  },
+  { immediate: true },
+);
 
 // 主窗口内的模态(关闭确认、各类警告、设备/IP 选择器、引导向导)都是窗口内的覆盖层，
 // 在袖珍模式那条窄窗口里会被裁得只剩一条，因此它们打开时把窗口临时还原成 800x600，
@@ -410,95 +398,47 @@ const dockBadge = computed(() => {
   return String(Math.max(server.webClientCount.value, 1));
 });
 
-watch(dockBadge, async (label) => {
-  try {
-    await invoke('set_dock_badge', { label });
-  } catch (e) {
-    console.error('set_dock_badge failed:', e);
-  }
-}, { immediate: true });
+watch(
+  dockBadge,
+  async (label) => {
+    try {
+      await command('set_dock_badge', { label });
+    } catch (e) {
+      console.error('set_dock_badge failed:', e);
+    }
+  },
+  { immediate: true },
+);
 
 // Central action button hover animations
 const onCentralBtnHover = () => {
   if (centralBtnRef.value) {
-    anime({
-      targets: centralBtnRef.value,
+    animate(centralBtnRef.value, {
       scale: 1.08,
       duration: 400,
-      easing: 'easeOutExpo',
+      ease: 'outExpo',
     });
   }
 };
 
 const onCentralBtnLeave = () => {
   if (centralBtnRef.value) {
-    anime({
-      targets: centralBtnRef.value,
+    animate(centralBtnRef.value, {
       scale: 1,
       duration: 500,
-      easing: 'easeOutExpo',
+      ease: 'outExpo',
     });
   }
 };
 
-// Sets up dynamic breathing glow animation during active streams
-watchEffect(() => {
-  if (server.serverState.value === 'streaming' && glowRef.value) {
-    if (!breatheAnim) {
-      breatheAnim = anime({
-        targets: glowRef.value,
-        opacity: [0.3, 0.7],
-        scale: [1.2, 1.35],
-        duration: 2000,
-        direction: 'alternate',
-        loop: true,
-        easing: 'easeInOutSine',
-      });
-    }
-  } else {
-    if (breatheAnim) {
-      breatheAnim.pause();
-      breatheAnim = null;
-    }
-    if (glowRef.value) {
-      anime.set(glowRef.value, { opacity: 0.3, scale: 1.25 });
-    }
-  }
-});
-
-// Sets up pulse animation on bottom bar indicator during active streams
-watchEffect(() => {
-  if (server.serverState.value === 'streaming' && statusDotRef.value) {
-    if (!dotPulseAnim) {
-      dotPulseAnim = anime({
-        targets: statusDotRef.value,
-        scale: [1, 1.4, 1],
-        duration: 1500,
-        loop: true,
-        easing: 'easeInOutQuad',
-      });
-    }
-  } else {
-    if (dotPulseAnim) {
-      dotPulseAnim.pause();
-      dotPulseAnim = null;
-    }
-    if (statusDotRef.value) {
-      anime.set(statusDotRef.value, { scale: 1 });
-    }
-  }
-});
-
 onUnmounted(() => {
   stopPocketObserver();
-  if (breatheAnim) breatheAnim.pause();
-  if (dotPulseAnim) dotPulseAnim.pause();
 });
 </script>
 
 <template>
   <OnboardingWizard :visible="showOnboarding" @complete="showOnboarding = false" />
-  <div class="relative w-full h-screen overflow-hidden overscroll-none text-foreground bg-transparent">
+  <div ref="rootRef" class="relative w-full h-screen overflow-hidden overscroll-none text-foreground bg-transparent origin-center">
     <!-- Rounded window background; pocket mode draws only its own bar and menus -->
     <div v-if="!pocketMode" data-blur-region class="absolute inset-0 -z-10 rounded-2xl bg-surface-container" />
 
@@ -534,13 +474,10 @@ onUnmounted(() => {
     <!-- Full Mode -->
     <div v-else class="absolute inset-0 flex flex-col p-3 gap-3">
       <!-- Header Section -->
-      <div class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 flex-shrink-0 relative z-30" :class="dragSurfaceClass" @mousedown="startDrag">
+      <div class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 shrink-0 relative z-30" :class="dragSurfaceClass" @mousedown="startDrag">
         <div class="flex items-center gap-3">
           <!-- macOS uses the native window controls; keep their footprint clear -->
-          <div
-            v-if="isMacOS"
-            class="macos-titlebar-spacer mr-1 flex-shrink-0"
-          />
+          <div v-if="isMacOS" class="macos-titlebar-spacer mr-1 shrink-0" />
           <div class="w-8 h-8 text-primary pointer-events-none [&>svg]:w-full [&>svg]:h-full" v-html="appIconSvg"></div>
           <div class="flex flex-col pointer-events-none select-none">
             <span class="text-sm font-extrabold text-primary">MicYou Desktop</span>
@@ -552,7 +489,7 @@ onUnmounted(() => {
           <!-- Network Selector -->
           <div class="relative" ref="ipMenuRef">
             <div
-              class="flex items-center bg-surface-variant/30 hover:bg-surface-variant/50 transition-all duration-300 hover:-translate-y-0.5 active:scale-95 hover:shadow-sm px-3 py-1.5 rounded-lg cursor-pointer border border-white/5"
+              class="flex items-center bg-surface-variant/30 hover:bg-surface-variant/50 transition-all duration-300 hover:-translate-y-0.5 active:scale-95 hover:shadow-xs px-3 py-1.5 rounded-lg cursor-pointer border border-white/5"
               role="button"
               @click="server.showIpMenu.value = !server.showIpMenu.value"
             >
@@ -573,7 +510,7 @@ onUnmounted(() => {
                 v-if="server.showIpMenu.value"
                 class="absolute right-0 top-full mt-1 w-64 bg-surface border border-outline/20 rounded-xl shadow-xl z-50 overflow-hidden"
               >
-                <div class="max-h-64 overflow-y-auto py-1">
+                <div class="max-h-64 overflow-y-auto overflow-x-hidden no-scrollbar">
                   <button
                     class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-surface-variant/50 transition-colors text-left"
                     @click="server.selectIp('', true)"
@@ -582,7 +519,7 @@ onUnmounted(() => {
                       <div class="text-xs font-medium text-foreground">{{ t('app.ipSelector.allInterfaces') }}</div>
                       <div class="text-[10px] text-on-surface-variant mt-0.5">{{ t('app.ipSelector.allInterfacesDesc') }}</div>
                     </div>
-                    <CheckCircle2 v-if="server.isAutoBind.value" class="w-4 h-4 text-primary flex-shrink-0" />
+                    <CheckCircle2 v-if="server.isAutoBind.value" class="w-4 h-4 text-primary shrink-0" />
                   </button>
 
                   <button
@@ -592,10 +529,10 @@ onUnmounted(() => {
                     @click="server.selectIp(iface.ip, false)"
                   >
                     <div class="flex-1 min-w-0">
-                      <div class="text-xs font-medium text-foreground">{{ iface.ip }}</div>
+                      <div class="text-xs font-medium text-foreground truncate" :title="iface.ip">{{ iface.ip }}</div>
                       <div class="text-[10px] text-on-surface-variant mt-0.5 truncate">{{ iface.interface_name }}</div>
                     </div>
-                    <CheckCircle2 v-if="!server.isAutoBind.value && server.selectedIp.value === iface.ip" class="w-4 h-4 text-primary flex-shrink-0" />
+                    <CheckCircle2 v-if="!server.isAutoBind.value && server.selectedIp.value === iface.ip" class="w-4 h-4 text-primary shrink-0" />
                   </button>
                 </div>
               </div>
@@ -615,7 +552,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Main Content -->
-      <div class="flex flex-1 gap-3 min-h-0">
+      <div class="relative flex flex-1 gap-3 min-h-0">
         <!-- Left Panel -->
         <div class="flex flex-col gap-3 transition-all duration-300" :class="audio.showMonitoringPanel.value ? 'w-[28%]' : 'w-[38%]'">
           <!-- Mode Card -->
@@ -625,7 +562,7 @@ onUnmounted(() => {
               <button
                 @click="server.connectionMode.value = 'wifi'"
                 class="flex-1 flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
-                :class="server.connectionMode.value === 'wifi' ? 'bg-primary text-on-primary shadow-lg shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
+                :class="server.connectionMode.value === 'wifi' ? 'bg-primary text-on-primary shadow-[0_0_16px_0] shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
               >
                 <Wifi class="w-4 h-4 mb-1" />
                 <span class="text-[10px] font-medium">Wi-Fi</span>
@@ -633,7 +570,7 @@ onUnmounted(() => {
               <button
                 @click="server.connectionMode.value = 'usb'"
                 class="flex-1 flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
-                :class="server.connectionMode.value === 'usb' ? 'bg-primary text-on-primary shadow-lg shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
+                :class="server.connectionMode.value === 'usb' ? 'bg-primary text-on-primary shadow-[0_0_16px_0] shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
               >
                 <Mic class="w-4 h-4 mb-1" />
                 <span class="text-[10px] font-medium">USB</span>
@@ -641,7 +578,7 @@ onUnmounted(() => {
               <button
                 @click="server.connectionMode.value = 'web'"
                 class="flex-1 flex flex-col items-center justify-center py-2 rounded-xl transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
-                :class="server.connectionMode.value === 'web' ? 'bg-primary text-on-primary shadow-lg shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
+                :class="server.connectionMode.value === 'web' ? 'bg-primary text-on-primary shadow-[0_0_16px_0] shadow-primary/30' : 'bg-surface-variant/40 text-on-surface-variant hover:bg-surface-variant/70 hover:shadow-md'"
               >
                 <Globe class="w-4 h-4 mb-1" />
                 <span class="text-[10px] font-medium">Web</span>
@@ -656,7 +593,7 @@ onUnmounted(() => {
               v-model="server.serverPort.value"
               type="number"
               max="65534"
-              class="w-full bg-surface-variant/40 hover:bg-surface-variant/60 border border-white/5 rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:bg-surface-variant/60 transition-all duration-300"
+              class="w-full bg-surface-variant/40 hover:bg-surface-variant/60 border border-white/5 rounded-xl px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:bg-surface-variant/60 transition-all duration-300"
             />
           </div>
 
@@ -665,7 +602,7 @@ onUnmounted(() => {
             <span class="text-xs text-on-surface-variant font-medium self-start">{{ $t('app.port') }}</span>
             <div v-if="server.serverState.value === 'idle'" class="w-full">
                 <input v-model="server.webPort.value" type="number"
-                    class="w-full bg-surface-variant/40 hover:bg-surface-variant/60 border border-white/5 rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:bg-surface-variant/60 transition-all duration-300" />
+                    class="w-full bg-surface-variant/40 hover:bg-surface-variant/60 border border-white/5 rounded-xl px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:bg-surface-variant/60 transition-all duration-300" />
             </div>
             <button v-if="server.serverState.value !== 'idle'" @click="server.showQrDialog.value = true"
                 class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 active:scale-[0.98] transition-all">
@@ -701,15 +638,15 @@ onUnmounted(() => {
             <AudioRing v-if="server.serverState.value === 'streaming'" :level="audio.audioLevel.value">
               <!-- Central Button When Streaming -->
               <div class="relative flex items-center justify-center">
-                <div ref="glowRef" class="absolute inset-0 bg-error/30 rounded-full blur-md scale-125"></div>
-                <button ref="centralBtnRef" @click="toggleStreaming" @mouseenter="onCentralBtnHover" @mouseleave="onCentralBtnLeave" class="relative z-10 w-[72px] h-[72px] rounded-full bg-error flex items-center justify-center shadow-lg hover:scale-95 transition-all duration-300 group-hover:bg-error/90 border border-white/10 hover:shadow-lg hover:shadow-error/30">
+                <div class="absolute inset-0 bg-error/30 rounded-full blur-md glow-breathe"></div>
+                <button ref="centralBtnRef" @click="toggleStreaming" @mouseenter="onCentralBtnHover" @mouseleave="onCentralBtnLeave" class="relative z-10 w-[72px] h-[72px] rounded-full bg-error flex items-center justify-center shadow-[0_0_16px_0] shadow-error/20 transition-all duration-300 group-hover:bg-error/90 border border-white/10 hover:shadow-[0_0_24px_4px] hover:shadow-error/30">
                   <Unlink class="w-7 h-7 text-on-error" stroke-width="2.5" />
                 </button>
               </div>
             </AudioRing>
 
             <div v-else class="relative w-full h-full flex items-center justify-center">
-              <button ref="centralBtnRef" @click="toggleStreaming" @mouseenter="onCentralBtnHover" @mouseleave="onCentralBtnLeave" class="relative z-10 w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-white/10 hover:shadow-2xl hover:shadow-primary/40"
+              <button ref="centralBtnRef" @click="toggleStreaming" @mouseenter="onCentralBtnHover" @mouseleave="onCentralBtnLeave" class="relative z-10 w-16 h-16 rounded-full flex items-center justify-center shadow-[0_0_24px_2px] transition-all duration-300 hover:-translate-y-1 active:scale-95 border border-white/10 hover:shadow-[0_0_32px_6px] hover:shadow-primary/40"
                       :class="server.serverState.value === 'starting' ? 'bg-secondary shadow-secondary/30 text-on-secondary' : (server.serverState.value === 'connecting' ? 'bg-tertiary shadow-tertiary/30 text-on-tertiary' : 'bg-primary shadow-primary/30 text-on-primary')">
                 <RefreshCw v-if="server.serverState.value === 'connecting'" class="w-7 h-7 animate-spin-slow" stroke-width="2.5" />
                 <Loader2 v-else-if="server.serverState.value === 'starting'" class="w-7 h-7 animate-spin" stroke-width="2.5" />
@@ -720,15 +657,17 @@ onUnmounted(() => {
         </div>
 
         <!-- Right Panel (Monitoring) -->
-        <div v-if="audio.showMonitoringPanel.value" class="w-[28%] transition-all duration-300 min-w-0">
-          <MonitoringPanel :serverState="server.serverState.value" :audioLevel="audio.audioLevel.value" :metrics="audio.audioMetrics.value" />
-        </div>
+        <Transition name="panel">
+          <div v-if="audio.showMonitoringPanel.value" class="w-[28%] min-w-0">
+            <MonitoringPanel :serverState="server.serverState.value" :audioLevel="audio.audioLevel.value" :metrics="audio.audioMetrics.value" />
+          </div>
+        </Transition>
       </div>
 
       <!-- Bottom Bar -->
-      <div class="haze-surface rounded-2xl p-2 flex justify-between items-center flex-shrink-0">
+      <div class="haze-surface rounded-2xl p-2 flex justify-between items-center shrink-0">
         <div class="flex items-center px-3">
-          <div ref="statusDotRef" class="w-2 h-2 rounded-full mr-2" :class="server.serverState.value === 'streaming' ? 'bg-primary shadow-[0_0_8px_hsl(var(--primary))]' : (server.serverState.value === 'starting' ? 'bg-secondary animate-pulse shadow-[0_0_8px_hsl(var(--secondary))]' : (server.serverState.value === 'connecting' ? 'bg-tertiary animate-pulse shadow-[0_0_8px_hsl(var(--tertiary))]' : 'bg-on-surface-variant'))"></div>
+          <div class="w-2 h-2 rounded-full mr-2" :class="server.serverState.value === 'streaming' ? 'bg-primary dot-pulse shadow-[0_0_8px_hsl(var(--primary))]' : (server.serverState.value === 'starting' ? 'bg-secondary animate-pulse shadow-[0_0_8px_hsl(var(--secondary))]' : (server.serverState.value === 'connecting' ? 'bg-tertiary animate-pulse shadow-[0_0_8px_hsl(var(--tertiary))]' : 'bg-on-surface-variant'))"></div>
           <span class="text-xs font-bold uppercase tracking-wider text-on-surface-variant transition-colors duration-300">{{ server.serverState.value === 'streaming' ? $t('app.status.stateStreaming') : (server.serverState.value === 'connecting' ? $t('app.status.stateConnecting') : (server.serverState.value === 'starting' ? $t('app.status.stateStarting') : $t('app.status.stateIdle'))) }}</span>
         </div>
 
@@ -804,7 +743,7 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="server.showIpSwitchConfirm.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div v-if="server.showIpSwitchConfirm.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
         <div class="bg-surface rounded-2xl shadow-2xl border border-outline/10 p-6 w-80">
           <h3 class="text-sm font-bold text-foreground mb-2">{{ t('app.ipSelector.switchConfirmTitle') }}</h3>
           <p class="text-xs text-on-surface-variant mb-5">{{ t('app.ipSelector.switchConfirmMessage') }}</p>
@@ -835,7 +774,7 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="server.showDeviceSelector.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div v-if="server.showDeviceSelector.value" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs">
         <div class="bg-surface rounded-2xl shadow-2xl border border-outline/10 p-6 w-96 max-h-[80vh] flex flex-col">
           <h3 class="text-sm font-bold text-foreground mb-2">{{ t('app.deviceSelector.title') }}</h3>
           <p class="text-xs text-on-surface-variant mb-4">{{ t('app.deviceSelector.desc') }}</p>
@@ -856,7 +795,7 @@ onUnmounted(() => {
                     {{ device.serial }}
                   </div>
                 </div>
-                <div class="ml-3 flex-shrink-0">
+                <div class="ml-3 shrink-0">
                   <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
                 </div>
               </div>

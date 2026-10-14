@@ -13,8 +13,6 @@ dist-ssr
 *.local
 src/generated/third-party-licenses.html
 src-tauri/binaries/*
-src-tauri/resources/libonnxruntime.*
-src-tauri/resources/onnxruntime.dll
 
 # Editor directories and files
 .vscode/*

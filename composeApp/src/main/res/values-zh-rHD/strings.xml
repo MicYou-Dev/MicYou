@@ -242,6 +242,7 @@
     <string name="targetIpLabel">目标 互联网协议</string>
     
     <string name="themeColorLabel">主题颜色数字值</string>
+    <string name="colorPickerTitle">选择颜色</string>
     <string name="themeDark">暗式</string>
     <string name="themeLabel">主题标签项</string>
     <string name="themeLight">光亮式</string>
@@ -304,6 +305,7 @@
     <string name="connectionReset">连接被重置了：远程设备强制关闭了连接</string>
     <string name="connectionSocketClosed">套接字已关闭了呀</string>
     <string name="connectionTimeout">连接超时了: 请检查网络连接或 IP 地址是否正确</string>
+    <string name="errorIpAddressEmpty">互联网协议地址不能为空</string>
     <string name="connectionUnreachable">无法到达主机: 请确保手机和电脑在同一个 Wi-Fi 网络下</string>
     <string name="done">完成</string>
     

@@ -84,8 +84,10 @@ pub fn open_plugins_dir(app: AppHandle, state: State<'_, ServerState>) -> Result
     Ok(dir)
 }
 
+/// Async for the same reason as `open_settings_window`: building a window in
+/// a sync command deadlocks on Windows.
 #[tauri::command]
-pub fn open_plugin_window(
+pub async fn open_plugin_window(
     app: AppHandle,
     state: State<'_, ServerState>,
     plugin_id: String,

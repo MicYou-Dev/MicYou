@@ -23,4 +23,5 @@ pub mod firewall;
 pub mod pipewire;
 pub mod resources;
 pub mod terminal;
+pub mod usbmux;
 pub mod vbcable;

@@ -14,9 +14,10 @@
  */
 
 use micyou_audio::dsp::AudioDspSettings;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Shared config directory (Windows: %APPDATA%\micyou, unix: XDG_CONFIG_HOME or ~/.config + micyou).
 pub fn config_dir() -> PathBuf {
@@ -59,11 +60,33 @@ pub fn server_prefs_path() -> PathBuf {
     config_dir().join("server.json")
 }
 
+fn load_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text)
+        .inspect_err(|e| log::warn!("[Config] ignoring malformed {}: {e}", path.display()))
+        .ok()
+}
+
+/// Write a config file atomically: the GUI, CLI and TUI read these files
+/// concurrently, and a half-written file would parse as defaults.
+fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let dir = path.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(dir).map_err(|e| format!("create config dir failed: {e}"))?;
+    let json =
+        serde_json::to_string_pretty(value).map_err(|e| format!("serialize {name} failed: {e}"))?;
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    fs::write(&tmp, json)
+        .and_then(|()| fs::rename(&tmp, path))
+        .inspect_err(|_| {
+            let _ = fs::remove_file(&tmp);
+        })
+        .map_err(|e| format!("write {name} failed: {e}"))
+}
+
 /// Load DSP settings from settings.json, falling back to defaults.
 pub fn load_dsp_settings() -> AudioDspSettings {
-    fs::read_to_string(settings_path())
-        .ok()
-        .and_then(|text| serde_json::from_str::<AudioDspSettings>(&text).ok())
+    load_json::<AudioDspSettings>(&settings_path())
         .map(|mut settings| {
             settings.normalize();
             settings
@@ -73,20 +96,14 @@ pub fn load_dsp_settings() -> AudioDspSettings {
 
 /// Persist DSP settings to settings.json (GUI, CLI and TUI share this file).
 pub fn save_dsp_settings(settings: &AudioDspSettings) -> Result<(), String> {
-    let dir = config_dir();
-    fs::create_dir_all(&dir).map_err(|e| format!("create config dir failed: {e}"))?;
     let mut normalized = settings.clone();
     normalized.normalize();
-    let json = serde_json::to_string_pretty(&normalized)
-        .map_err(|e| format!("serialize settings failed: {e}"))?;
-    fs::write(settings_path(), json).map_err(|e| format!("write settings.json failed: {e}"))
+    save_json(&settings_path(), &normalized)
 }
 
 /// Raw settings.json as a JSON value (for the CLI `settings get`).
 pub fn settings_json() -> serde_json::Value {
-    fs::read_to_string(settings_path())
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
+    load_json(&settings_path())
         .unwrap_or_else(|| serde_json::to_value(AudioDspSettings::default()).unwrap_or_default())
 }
 
@@ -99,18 +116,11 @@ pub struct UiPrefs {
 }
 
 pub fn load_ui_prefs() -> UiPrefs {
-    fs::read_to_string(ui_prefs_path())
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    load_json(&ui_prefs_path()).unwrap_or_default()
 }
 
 pub fn save_ui_prefs(prefs: &UiPrefs) -> Result<(), String> {
-    let dir = config_dir();
-    fs::create_dir_all(&dir).map_err(|e| format!("create config dir failed: {e}"))?;
-    let json = serde_json::to_string_pretty(prefs)
-        .map_err(|e| format!("serialize ui prefs failed: {e}"))?;
-    fs::write(ui_prefs_path(), json).map_err(|e| format!("write ui.json failed: {e}"))
+    save_json(&ui_prefs_path(), prefs)
 }
 
 /// Theme colors exported from the GUI for the TUI.
@@ -127,18 +137,11 @@ pub struct ThemeColors {
 }
 
 pub fn load_theme_colors() -> ThemeColors {
-    fs::read_to_string(theme_path())
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    load_json(&theme_path()).unwrap_or_default()
 }
 
 pub fn save_theme_colors(colors: &ThemeColors) -> Result<(), String> {
-    let dir = config_dir();
-    fs::create_dir_all(&dir).map_err(|e| format!("create config dir failed: {e}"))?;
-    let json =
-        serde_json::to_string_pretty(colors).map_err(|e| format!("serialize theme failed: {e}"))?;
-    fs::write(theme_path(), json).map_err(|e| format!("write theme.json failed: {e}"))
+    save_json(&theme_path(), colors)
 }
 
 /// Connection-level settings shared between the GUI, CLI and TUI.
@@ -161,12 +164,7 @@ pub struct ServerPrefs {
     /// directions. When false, the desktop neither sends its mute state to
     /// the phone nor applies mute state received from it. Defaults to true,
     /// including for server.json files written before this field existed.
-    #[serde(default = "default_mute_sync")]
     pub mute_sync: bool,
-}
-
-fn default_mute_sync() -> bool {
-    true
 }
 
 impl Default for ServerPrefs {
@@ -185,17 +183,10 @@ impl Default for ServerPrefs {
 
 /// Load connection settings from server.json, falling back to defaults.
 pub fn load_server_prefs() -> ServerPrefs {
-    fs::read_to_string(server_prefs_path())
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+    load_json(&server_prefs_path()).unwrap_or_default()
 }
 
 /// Persist connection settings to server.json (GUI, CLI and TUI share this file).
 pub fn save_server_prefs(prefs: &ServerPrefs) -> Result<(), String> {
-    let dir = config_dir();
-    fs::create_dir_all(&dir).map_err(|e| format!("create config dir failed: {e}"))?;
-    let json = serde_json::to_string_pretty(prefs)
-        .map_err(|e| format!("serialize server prefs failed: {e}"))?;
-    fs::write(server_prefs_path(), json).map_err(|e| format!("write server.json failed: {e}"))
+    save_json(&server_prefs_path(), prefs)
 }

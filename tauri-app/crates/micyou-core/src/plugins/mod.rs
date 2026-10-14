@@ -236,12 +236,12 @@ impl PluginHost {
         if entry.manifest.kind == PluginKind::Dsp {
             let dsp = entry.manifest.dsp.clone().unwrap_or_default();
             let handle = dsp_handle.ok_or_else(|| PluginError::NotLoaded(id.to_string()))?;
-            self.dsp_registry.register(micyou_plugin::DspNode {
-                plugin_id: id.to_string(),
-                first: dsp.first,
-                insert_after: dsp.insert_after.clone(),
-                instance: handle,
-            })?;
+            self.dsp_registry.register(micyou_plugin::DspNode::new(
+                id.to_string(),
+                dsp.first,
+                dsp.insert_after.clone(),
+                handle,
+            ))?;
         }
         log::info!("[plugins] enabled {id}");
         Ok(())

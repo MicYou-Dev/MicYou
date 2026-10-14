@@ -27,8 +27,10 @@ use crate::transport::udp::{ActiveAudioSession, SharedActiveAudioSession};
 use micyou_audio::dsp::{AudioDspSettings, DspProcessor};
 use micyou_audio::AecFailure;
 use std::path::PathBuf;
+use micyou_protocol::micyou::AudioPacketMessage;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
 /// Output sample rate of the whole pipeline.
@@ -107,17 +109,24 @@ fn decode_pcm(audio_format: i32, buffer: &[u8], out: &mut Vec<f32>) -> bool {
         // ENCODING_PCM_16BIT
         2 => out.extend(
             buffer
-                .as_chunks::<2>().0.iter()
-                .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0),
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| i16::from_le_bytes(*c) as f32 / 32768.0),
         ),
         // ENCODING_PCM_8BIT (unsigned)
         3 => out.extend(buffer.iter().map(|&b| (b as f32 - 128.0) / 128.0)),
-        // ENCODING_PCM_FLOAT
-        4 => out.extend(
-            buffer
-                .as_chunks::<4>().0.iter()
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
-        ),
+        // ENCODING_PCM_FLOAT. A NaN or infinity would stick in every
+        // recursive filter of the DSP chain and silence the stream for good,
+        // so non-finite samples from the peer become silence.
+        4 => out.extend(buffer.as_chunks::<4>().0.iter().map(|c| {
+            let sample = f32::from_le_bytes(*c);
+            if sample.is_finite() {
+                sample
+            } else {
+                0.0
+            }
+        })),
         // ENCODING_PCM_24BIT_PACKED
         6 => out.extend(buffer.as_chunks::<3>().0.iter().map(|c| {
             let sample = (c[0] as i32) | ((c[1] as i32) << 8) | ((c[2] as i8 as i32) << 16);
@@ -128,68 +137,190 @@ fn decode_pcm(audio_format: i32, buffer: &[u8], out: &mut Vec<f32>) -> bool {
     true
 }
 
+/// Turns wire packets into 48 kHz interleaved f32. Both codecs and the
+/// resampler are stateful, so they are rebuilt whenever the stream format
+/// changes and dropped when a new transport session starts.
+#[derive(Default)]
+struct StreamDecoder {
+    /// Keyed by (sample_rate, channels).
+    opus: Option<((u32, usize), opus::Decoder)>,
+    opus_buf: Vec<f32>,
+    /// Keyed by (sample_rate, channels); `None` inside means creating the
+    /// resampler failed for that format, which is not retried per packet.
+    resampler: Option<((u32, usize), Option<micyou_audio::RubatoResampler>)>,
+    resample_buf: Vec<f32>,
+    /// Decode failures repeat for every packet of a broken stream; log the
+    /// first one per session only.
+    reported_failure: bool,
+}
+
+impl StreamDecoder {
+    /// Longest Opus frame (120 ms), the buffer size the decoder may need.
+    const MAX_OPUS_FRAME_MS: usize = 120;
+
+    fn reset(&mut self) {
+        self.opus = None;
+        self.resampler = None;
+        self.reported_failure = false;
+    }
+
+    fn report_failure(&mut self, message: std::fmt::Arguments) {
+        if !std::mem::replace(&mut self.reported_failure, true) {
+            log::warn!("[Audio] {message} (further errors this session are not logged)");
+        }
+    }
+
+    /// Decode `audio` into `out`; leaves `out` empty when nothing decodable.
+    fn decode(&mut self, audio: &AudioPacketMessage, out: &mut Vec<f32>) {
+        out.clear();
+        // validate_audio_packet bounds both fields to positive values.
+        let sample_rate = audio.sample_rate as u32;
+        let channels = audio.channel_count as usize;
+        if audio.codec == micyou_protocol::CODEC_OPUS {
+            self.decode_opus(&audio.buffer, sample_rate, channels, out);
+        } else if !decode_pcm(audio.audio_format, &audio.buffer, out) {
+            self.report_failure(format_args!("Unsupported audio format: {}", audio.audio_format));
+        }
+        if !out.is_empty() && sample_rate != OUTPUT_RATE {
+            self.resample(sample_rate, channels, out);
+        }
+    }
+
+    fn decode_opus(&mut self, buffer: &[u8], sample_rate: u32, channels: usize, out: &mut Vec<f32>) {
+        let key = (sample_rate, channels);
+        if self.opus.as_ref().is_none_or(|(current, _)| *current != key) {
+            self.opus = opus::Channels::from_channel_count(channels)
+                .and_then(|ch| opus::Decoder::new(sample_rate, ch).ok())
+                .map(|decoder| (key, decoder));
+            if self.opus.is_none() {
+                self.report_failure(format_args!(
+                    "Failed to create Opus decoder for {sample_rate}Hz/{channels}ch"
+                ));
+            }
+        }
+        let Some((_, decoder)) = self.opus.as_mut() else {
+            return;
+        };
+        let capacity = sample_rate as usize * Self::MAX_OPUS_FRAME_MS / 1000 * channels;
+        self.opus_buf.resize(capacity, 0.0);
+        match decoder.decode_float(buffer, &mut self.opus_buf) {
+            Ok(frames) => out.extend_from_slice(&self.opus_buf[..frames * channels]),
+            Err(e) => self.report_failure(format_args!("Opus decode error: {e}")),
+        }
+    }
+
+    fn resample(&mut self, sample_rate: u32, channels: usize, samples: &mut Vec<f32>) {
+        let key = (sample_rate, channels);
+        if self.resampler.as_ref().is_none_or(|(current, _)| *current != key) {
+            let resampler = micyou_audio::RubatoResampler::new(sample_rate, OUTPUT_RATE, channels)
+                .inspect_err(|e| log::error!("[Audio] Failed to create resampler: {e}"))
+                .ok();
+            self.resampler = Some((key, resampler));
+        }
+        if let Some((_, Some(resampler))) = self.resampler.as_mut() {
+            resampler.resample(samples, channels, &mut self.resample_buf);
+            std::mem::swap(samples, &mut self.resample_buf);
+        }
+    }
+}
+
+/// Mean square root of a block, the level shown in meters.
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (samples.iter().map(|x| x * x).sum::<f32>() / samples.len() as f32).sqrt()
+}
+
+/// How long the audio thread waits for the next event before re-checking the
+/// session (loopback capture start/stop). Packets wake it immediately.
+const ACTIVE_POLL: Duration = Duration::from_millis(100);
+const IDLE_POLL: Duration = Duration::from_millis(500);
+
+/// Block the audio thread until the next event or `wait` elapses. The timer
+/// is created inside `block_on`, the only place the runtime is current.
+fn recv_within<T>(
+    runtime: &tokio::runtime::Runtime,
+    rx: &mut mpsc::Receiver<T>,
+    wait: Duration,
+) -> Result<Option<T>, tokio::time::error::Elapsed> {
+    runtime.block_on(async { tokio::time::timeout(wait, rx.recv()).await })
+}
+
 fn run(pipeline: Pipeline) {
     let Pipeline {
         mut audio_rx,
         ready_tx,
-        audio_output: audio_output_shared,
-        output_device: resolved_output_device,
+        audio_output,
+        output_device,
         output_buffer_ms,
-        resource_dir: resource_root,
+        resource_dir,
         dsp_settings,
-        plugins: plugins_shared,
-        events: events_audio,
-        active_audio_session: active_audio_session_audio,
-        is_monitoring: is_monitoring_flag,
+        plugins,
+        events,
+        active_audio_session,
+        is_monitoring,
         spectrum_streaming_enabled,
-        stats: stats_audio,
-        bypass_dsp: is_web_mode,
+        stats,
+        bypass_dsp,
     } = pipeline;
+
+    // The thread blocks on the async channel through a minimal runtime, so a
+    // packet is processed the moment it arrives instead of on a poll tick.
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            let _ = ready_tx.send(Err(format!("audio thread runtime: {e}")));
+            return;
+        }
+    };
 
     // Ensure the virtual device is open. This is normally a no-op (already
     // opened at app startup); it also covers CLI/TUI first run and the rare
     // case where opening failed earlier and a later attempt succeeds.
     if !output::ensure_started(
-        &audio_output_shared,
-        resolved_output_device,
+        &audio_output,
+        output_device,
         output_buffer_ms,
-        resource_root.as_deref(),
+        resource_dir.as_deref(),
     ) {
         log::error!("[Audio] Output device unavailable; audio will be silent");
     }
     let _ = ready_tx.send(Ok(()));
-    let mut dsp_processor = DspProcessor::new(dsp_settings.clone(), resource_root);
+    let mut dsp_processor = DspProcessor::new(dsp_settings.clone(), resource_dir);
     // Attach the plugin DSP stage (runs at the legacy "Plugins" node and
     // at per-plugin "Plugin:<id>" nodes, issue #347).
-    dsp_processor.set_external_hook(Some(plugins_shared.dsp_hook()));
+    dsp_processor.set_external_hook(Some(plugins.dsp_hook()));
     let mut jb = JitterBuffer::new(12);
-    let mut frame_counter: u32 = 0;
-    let mut input_resampler: Option<micyou_audio::RubatoResampler> = None;
-    let mut current_input_sample_rate: u32 = 0;
-    let mut resample_out_buf = Vec::new();
+    let mut decoder = StreamDecoder::default();
     let mut pcm_f32 = Vec::new();
-    // Opus decoder is keyed by (sample_rate, channel_count); recreated whenever
-    // those change or a new transport session starts (stateful codec).
-    let mut opus_decoder: Option<(u32, usize, opus::Decoder)> = None;
-    let mut opus_float_buf: Vec<f32> = Vec::new();
+    let mut frame_counter: u32 = 0;
+    let mut monitoring: Option<bool> = None;
 
     // Speaker loopback capture for the AEC far-end reference. The audio crate
-    // selects the platform source (WASAPI loopback, PipeWire sink monitor or a
-    // Core Audio process tap), so the transport only knows that a reference may
-    // exist. It starts lazily once an AEC-enabled session sends audio.
-    let loopback = micyou_audio::LoopbackCapture::new();
+    // picks the platform source - WASAPI loopback, the PipeWire sink monitor, or
+    // on macOS a Core Audio process tap falling back to BlackHole - so every
+    // platform gets a capture and this layer only asks whether it is active.
+    // It still starts lazily, once an AEC-enabled session sends audio.
+    let loopback: Option<micyou_audio::LoopbackCapture> =
+        Some(micyou_audio::LoopbackCapture::new());
 
     let mut audio_received_for_session = false;
     let mut aec_runtime_available = micyou_audio::aec_reference_availability().available;
     // A newly started server always begins with a fresh runtime state, even
     // before the first client session arrives.
-    restore_aec_runtime(&mut aec_runtime_available, &dsp_settings, &events_audio);
+    if loopback.is_some() {
+        restore_aec_runtime(&mut aec_runtime_available, &dsp_settings, &events);
+    }
     // Sync the AEC far-end capture with actual audio flow. A control session
     // alone is not enough: while waiting for the first valid audio packet,
     // there is no microphone stream that needs an echo reference.
     let sync_loopback = |audio_received: &mut bool, runtime_available: &mut bool| {
         let transport_active = !matches!(
-            *active_audio_session_audio
+            *active_audio_session
                 .read()
                 .unwrap_or_else(|p| p.into_inner()),
             ActiveAudioSession::Inactive
@@ -198,7 +329,9 @@ fn run(pipeline: Pipeline) {
             *audio_received = false;
         }
 
-        let lb = &loopback;
+        let Some(lb) = &loopback else {
+            return transport_active;
+        };
         let aec_enabled = dsp_settings
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -222,244 +355,144 @@ fn run(pipeline: Pipeline) {
 
         let failure = lb.take_failure_reason().or_else(|| lb.start().err());
         if let Some(reason) = failure {
-            disable_aec_runtime(runtime_available, &events_audio, reason);
+            disable_aec_runtime(runtime_available, &events, reason);
         } else {
             log::info!("[Audio] Starting speaker loopback capture for AEC");
         }
         transport_active
     };
 
+    let mut session_active = false;
     loop {
-        // Idle heartbeat every 500ms: with no device session the loopback
-        // capture stream stays stopped (biggest idle CPU win).
-        match audio_rx.try_recv() {
-            Err(mpsc::error::TryRecvError::Disconnected) => break,
-            Err(mpsc::error::TryRecvError::Empty) => {
-                // Poll fast (10ms) while a session is active: audio packets
-                // can arrive after a silence gap and must not sit in the
-                // channel for up to 500ms (that caused audible dropouts at
-                // the start of each utterance). Idle servers sleep 500ms.
-                let session_active =
+        let wait = if session_active { ACTIVE_POLL } else { IDLE_POLL };
+        let event = match recv_within(&runtime, &mut audio_rx, wait) {
+            Ok(Some(event)) => event,
+            Ok(None) => break,
+            Err(_) => {
+                session_active =
                     sync_loopback(&mut audio_received_for_session, &mut aec_runtime_available);
-                std::thread::sleep(std::time::Duration::from_millis(if session_active {
-                    10
-                } else {
-                    500
-                }));
+                continue;
             }
-            Ok(event) => {
-                audio_output_shared.set_monitoring(
-                    is_monitoring_flag.load(Ordering::Relaxed),
-                );
-                match event {
-                    AudioStreamEvent::SessionStarting { expected, epoch } => {
-                        audio_received_for_session = false;
-                        loopback.reset_session();
-                        dsp_processor.reset_aec_session();
-                        opus_decoder = None;
-                        restore_aec_runtime(
-                            &mut aec_runtime_available,
-                            &dsp_settings,
-                            &events_audio,
-                        );
-                        jb.prepare_transport_session_epoch(expected, epoch);
-                        continue;
-                    }
-                    AudioStreamEvent::Packet { packet, epoch } => {
-                        audio_received_for_session = true;
-                        sync_loopback(
-                            &mut audio_received_for_session,
-                            &mut aec_runtime_available,
-                        );
-                        jb.push_epoch(packet, epoch);
-                    }
+        };
+
+        let monitoring_now = is_monitoring.load(Ordering::Relaxed);
+        if monitoring != Some(monitoring_now) {
+            monitoring = Some(monitoring_now);
+            audio_output.set_monitoring(monitoring_now);
+        }
+        match event {
+            AudioStreamEvent::SessionStarting { expected, epoch } => {
+                audio_received_for_session = false;
+                if let Some(lb) = &loopback {
+                    lb.reset_session();
+                    restore_aec_runtime(&mut aec_runtime_available, &dsp_settings, &events);
                 }
-                let packets: Vec<_> = std::iter::from_fn(|| jb.pop()).collect();
+                dsp_processor.reset_aec_session();
+                decoder.reset();
+                jb.prepare_transport_session_epoch(expected, epoch);
+                continue;
+            }
+            AudioStreamEvent::Packet { packet, epoch } => {
+                audio_received_for_session = true;
+                session_active =
+                    sync_loopback(&mut audio_received_for_session, &mut aec_runtime_available);
+                jb.push_epoch(packet, epoch);
+            }
+        }
 
-                for ordered_packet in packets {
-                    if let Some(audio_data) = ordered_packet.audio_packet {
-                        if audio_data.codec == micyou_protocol::CODEC_OPUS {
-                            // Opus decode: reorder on flags/sample-rate changes, then
-                            // decode directly into f32 so it feeds the DSP chain intact.
-                            let channels = audio_data.channel_count as usize;
-                            let sample_rate = audio_data.sample_rate as u32;
-                            let needs_decoder = match &opus_decoder {
-                                Some((sr, ch, _)) => *sr != sample_rate || *ch != channels,
-                                None => true,
-                            };
-                            if needs_decoder {
-                                let created =
-                                    opus::Channels::from_channel_count(channels)
-                                        .and_then(|ch| {
-                                            opus::Decoder::new(sample_rate, ch).ok()
-                                        });
-                                opus_decoder = created.map(|dec| (sample_rate, channels, dec));
-                                if opus_decoder.is_none() {
-                                    log::error!(
-                                        "[Audio] Failed to create Opus decoder for {sample_rate}Hz/{channels}ch"
-                                    );
-                                }
-                            }
-                            if let Some((_, _, decoder)) = opus_decoder.as_mut() {
-                                let target_frames = (sample_rate as usize / 50) * channels; // 20ms
-                                if opus_float_buf.len() != target_frames {
-                                    opus_float_buf.resize(target_frames, 0.0);
-                                }
-                                match decoder
-                                    .decode_float(&audio_data.buffer, &mut opus_float_buf)
-                                {
-                                    Ok(frames) => {
-                                        pcm_f32.clear();
-                                        pcm_f32.extend_from_slice(
-                                            &opus_float_buf[..frames * channels],
-                                        );
-                                    }
-                                    Err(e) => {
-                                        log::warn!("[Audio] Opus decode error: {e}");
-                                        pcm_f32.clear();
-                                    }
-                                }
-                            } else {
-                                pcm_f32.clear();
-                            }
-                        } else if !decode_pcm(
-                            audio_data.audio_format,
-                            &audio_data.buffer,
-                            &mut pcm_f32,
-                        ) {
-                            log::warn!(
-                                "[Audio] Unsupported audio format: {}",
-                                audio_data.audio_format
-                            );
-                        }
-                        if !pcm_f32.is_empty() {
-                            let channels = audio_data.channel_count as usize;
-                            let sample_rate = audio_data.sample_rate as u32;
+        while let Some(ordered_packet) = jb.pop() {
+            let Some(audio_data) = ordered_packet.audio_packet else {
+                continue;
+            };
+            decoder.decode(&audio_data, &mut pcm_f32);
+            if pcm_f32.is_empty() {
+                continue;
+            }
+            let channels = (audio_data.channel_count as usize).max(1);
 
-                            if sample_rate > 0 && sample_rate != OUTPUT_RATE {
-                                if current_input_sample_rate != sample_rate {
-                                    match micyou_audio::RubatoResampler::new(
-                                        sample_rate,
-                                        OUTPUT_RATE,
-                                        channels.max(1),
-                                    ) {
-                                        Ok(res) => {
-                                            input_resampler = Some(res);
-                                            current_input_sample_rate = sample_rate;
-                                        }
-                                        Err(e) => {
-                                            log::error!("[Audio] Failed to create resampler: {e}");
-                                            input_resampler = None;
-                                            current_input_sample_rate = OUTPUT_RATE;
-                                        }
-                                    }
-                                }
-                                if let Some(ref mut resampler) = input_resampler {
-                                    resampler.resample(
-                                        &pcm_f32,
-                                        channels.max(1),
-                                        &mut resample_out_buf,
-                                    );
-                                    pcm_f32.clear();
-                                    pcm_f32.extend_from_slice(&resample_out_buf);
-                                }
-                            } else {
-                                input_resampler = None;
-                                current_input_sample_rate = OUTPUT_RATE;
-                            }
-
-                            let queued_samples = audio_output_shared.queued_samples();
-                            let queued_ms = if channels > 0 {
-                                (queued_samples as f64 / channels as f64) / 48.0
-                            } else {
-                                0.0
-                            };
-
-                            // Web mode: skip DSP for now, output raw audio directly
-                            let (input_rms, processed_rms) = if is_web_mode {
-                                let sum: f32 = pcm_f32.iter().map(|x| x * x).sum();
-                                let rms = (sum / pcm_f32.len() as f32).sqrt();
-                                (rms, rms)
-                            } else {
-                                // Read speaker loopback for AEC far-end reference.
-                                // This captures the ACTUAL speaker output (WASAPI/process tap/PipeWire),
-                                // which is the true echo source the phone mic picks up.
-                                // Feed one mono reference sample for each near-end frame.
-                                // Matching the processed frame count prevents drift when
-                                // packet sizes or input sample rates vary.
-                                let near_frames = pcm_f32.len() / channels.max(1);
-                                if loopback.is_active() {
-                                    let far_data = loopback.read(near_frames);
-                                    dsp_processor.set_far_end_audio(&far_data);
-                                }
-                                let (raw, processed) = dsp_processor.process(
-                                    &mut pcm_f32,
-                                    channels.max(1),
-                                    queued_ms,
-                                );
-                                if let Some(reason) = dsp_processor.take_aec_failure() {
-                                    disable_aec_runtime(
-                                        &mut aec_runtime_available,
-                                        &events_audio,
-                                        reason,
-                                    );
-                                }
-                                (raw, processed)
-                            };
-
-                            // Local hard-mute: the output engine drops the
-                            // audio itself; additionally report silence so
-                            // UI meters and plugin snapshots read zero
-                            // levels while muted.
-                            let muted_now = stats_audio.is_muted();
-                            let (input_rms, processed_rms) = if muted_now {
-                                (0.0, 0.0)
-                            } else {
-                                (input_rms, processed_rms)
-                            };
-
-                            // 写入精确的 RMS 供插件 API 读取
-                            stats_audio.set_levels(input_rms, processed_rms);
-
-                            audio_output_shared.push(pcm_f32.clone(), channels.max(1));
-
-                            frame_counter = frame_counter.wrapping_add(1);
-                            if frame_counter.is_multiple_of(6) {
-                                let level = (processed_rms * 500.0).min(100.0) as u32;
-                                events_audio.audio_level(level);
-
-                                if spectrum_streaming_enabled
-                                    .load(Ordering::Acquire)
-                                {
-                                    let (mut raw_spec, mut proc_spec) =
-                                        dsp_processor.get_spectrums();
-                                    if muted_now {
-                                        raw_spec.iter_mut().for_each(|v| *v = 0.0);
-                                        proc_spec.iter_mut().for_each(|v| *v = 0.0);
-                                    }
-                                    events_audio.audio_spectrum(SpectrumPayload {
-                                    raw: raw_spec,
-                                    processed: proc_spec,
-                                });
-                                }
-                            }
-                        }
-                    }
+            let (input_rms, processed_rms) = if bypass_dsp {
+                let level = rms(&pcm_f32);
+                (level, level)
+            } else {
+                // The loopback capture is the true echo source the phone mic
+                // picks up. Feed one mono reference sample per near-end frame
+                // so packet sizes or input rates cannot make the two drift.
+                let near_frames = pcm_f32.len() / channels;
+                if let Some(far_data) = loopback
+                    .as_ref()
+                    .filter(|capture| capture.is_active())
+                    .map(|capture| capture.read(near_frames))
+                {
+                    dsp_processor.set_far_end_audio(&far_data);
                 }
+                let levels =
+                    dsp_processor.process(&mut pcm_f32, channels, audio_output.queued_ms());
+                if let Some(reason) = dsp_processor.take_aec_failure() {
+                    disable_aec_runtime(&mut aec_runtime_available, &events, reason);
+                }
+                levels
+            };
+
+            // Local hard-mute: the output engine drops the audio itself;
+            // report silence too so meters and plugin snapshots read zero.
+            let muted = stats.is_muted();
+            if muted {
+                stats.set_levels(0.0, 0.0);
+            } else {
+                stats.set_levels(input_rms, processed_rms);
+            }
+
+            audio_output.push(pcm_f32.clone(), channels);
+
+            frame_counter = frame_counter.wrapping_add(1);
+            if !frame_counter.is_multiple_of(6) {
+                continue;
+            }
+            let level = if muted { 0 } else { (processed_rms * 500.0).min(100.0) as u32 };
+            events.audio_level(level);
+            if spectrum_streaming_enabled.load(Ordering::Acquire) {
+                let (mut raw, mut processed) = dsp_processor.get_spectrums();
+                if muted {
+                    raw.fill(0.0);
+                    processed.fill(0.0);
+                }
+                events.audio_spectrum(SpectrumPayload { raw, processed });
             }
         }
     }
 
-    let was_active = loopback.is_active();
-    loopback.stop();
-    if was_active {
-        log::info!("[Audio] Speaker loopback stopped");
+    if let Some(lb) = &loopback {
+        let was_active = lb.is_active();
+        lb.stop();
+        if was_active {
+            log::info!("[Audio] Speaker loopback stopped");
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_pcm, should_capture_loopback};
+    use super::{decode_pcm, recv_within, should_capture_loopback};
+    use std::time::Duration;
+
+    #[test]
+    fn recv_within_works_on_a_plain_thread() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap();
+            let wait = Duration::from_millis(10);
+            assert!(recv_within(&runtime, &mut rx, wait).is_err());
+            tx.try_send(7).unwrap();
+            assert_eq!(recv_within(&runtime, &mut rx, wait).unwrap(), Some(7));
+            drop(tx);
+            assert_eq!(recv_within(&runtime, &mut rx, wait).unwrap(), None);
+        })
+        .join()
+        .unwrap();
+    }
 
     #[test]
     fn loopback_waits_for_first_audio_packet() {
@@ -481,6 +514,8 @@ mod tests {
         assert_eq!(out, vec![1.0]);
         assert!(decode_pcm(6, &[0x00, 0x00, 0xc0], &mut out));
         assert_eq!(out, vec![-0.5]);
+        assert!(decode_pcm(4, &f32::NAN.to_le_bytes(), &mut out));
+        assert_eq!(out, vec![0.0]);
         assert!(!decode_pcm(9, &[1, 2], &mut out));
         assert!(out.is_empty());
     }

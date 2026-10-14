@@ -3,7 +3,6 @@ package com.lanrhyme.micyou
 import android.app.Application
 import android.content.Context
 import android.os.Build
-import android.widget.Toast
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -63,9 +62,6 @@ class MicYouApplication : Application() {
                 thread.stackTrace.forEach { pw.println(it.toString()) }
                 pw.flush()
                 logFile.writeText(sw.toString())
-
-                // 显示 Toast 提示
-                Toast.makeText(this, "MicYou 遇到错误，已记录日志", Toast.LENGTH_LONG).show()
             } catch (_: Exception) {
                 // 如果连日志都写不了，至少不要吞掉原始异常
             }

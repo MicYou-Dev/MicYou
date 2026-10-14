@@ -40,7 +40,8 @@ import com.lanrhyme.micyou.network.DeviceDiscoveryManager
 import com.lanrhyme.micyou.network.DiscoveredDevice
 import com.lanrhyme.micyou.settings.Settings
 import com.lanrhyme.micyou.settings.SettingsFactory
-import com.lanrhyme.micyou.util.AppLanguage
+import com.lanrhyme.micyou.R
+import com.lanrhyme.micyou.util.getString
 import com.lanrhyme.micyou.util.Constants
 import com.lanrhyme.micyou.util.Logger
 import com.lanrhyme.micyou.viewmodel.AudioStreamUiState
@@ -77,7 +78,7 @@ class AudioStreamViewModel : ViewModel() {
             _uiState.update {
                 it.copy(
                     streamState = StreamState.Error,
-                    errorMessage = "未处理错误: ${throwable.javaClass.simpleName} - ${throwable.message}",
+                    errorMessage = "${throwable.javaClass.simpleName}: ${throwable.message}",
                     showErrorDialog = true,
                     errorDetails = null
                 )
@@ -240,23 +241,18 @@ class AudioStreamViewModel : ViewModel() {
             else -> rawPort
         }
 
-        // IP 地址验证
+        // Hostnames and IPv6 are valid targets, so only an empty field is rejected here.
         if (ip.isBlank()) {
-                Logger.e("AudioStreamViewModel", "IP address is empty")
-                _uiState.update {
-                    it.copy(
-                        streamState = StreamState.Error,
-                        errorMessage = "IP 地址不能为空",
-                        showErrorDialog = true
-                    )
-                }
-                return
+            Logger.e("AudioStreamViewModel", "IP address is empty")
+            _uiState.update {
+                it.copy(
+                    streamState = StreamState.Error,
+                    errorMessage = getString(R.string.errorIpAddressEmpty),
+                    showErrorDialog = true
+                )
             }
-            // 基本的 IP 格式验证
-            val ipRegex = Regex("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
-            if (!ipRegex.matches(ip) && !ip.startsWith("127.")) {
-                Logger.w("AudioStreamViewModel", "IP address format may be invalid: $ip")
-            }
+            return
+        }
 
         val sampleRate = _uiState.value.sampleRate
         val channelCount = _uiState.value.channelCount
@@ -277,15 +273,9 @@ class AudioStreamViewModel : ViewModel() {
 
             val cause = if (t is Exception) t else Exception("${t.javaClass.simpleName}: ${t.message}", t)
             val errorType = ConnectionErrorHelper.analyzeError(cause, mode)
-            val savedLanguageName = settings.getString("language", AppLanguage.System.name)
-            val language = try {
-                AppLanguage.valueOf(savedLanguageName)
-            } catch (ex: Exception) {
-                AppLanguage.System
-            }
             val rawMessage = when (t) {
-                is NoSuchMethodError -> "系统 API 不兼容 (NoSuchMethod): ${t.message}"
-                is NoClassDefFoundError -> "运行类缺失 (NoClassDef): ${t.message}"
+                is NoSuchMethodError -> "Incompatible system API (NoSuchMethodError): ${t.message}"
+                is NoClassDefFoundError -> "Missing runtime class (NoClassDefFoundError): ${t.message}"
                 else -> t.message ?: "Unknown error"
             }
             val errorDetails = ConnectionErrorHelper.generateErrorDetails(
@@ -380,13 +370,20 @@ class AudioStreamViewModel : ViewModel() {
         }
 
         // 如果要求重启流（IP 切换时），先停止再启动
-        if (restartStream && wasRunning && ip.isNotBlank()) {
-            auxiliaryScope.launch(Dispatchers.IO) {
+        // Holds the start flag so a concurrent startStream() cannot race the restart;
+        // stays on the main dispatcher like every other uiState writer.
+        if (restartStream && wasRunning && ip.isNotBlank() && !isStartStreamRequestPending) {
+            isStartStreamRequestPending = true
+            auxiliaryScope.launch {
                 try {
                     _audioEngine.stopAndWait()
                     startStreamInternal()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.e("AudioStreamViewModel", "Failed to restart stream after IP change", e)
+                } finally {
+                    isStartStreamRequestPending = false
                 }
             }
         }

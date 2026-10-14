@@ -45,7 +45,7 @@
                 v-model="marketQuery"
                 type="text"
                 :placeholder="$t('plugins.marketSearch')"
-                class="w-full h-10 pl-9 pr-3 rounded-full bg-surface-variant/20 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary/40"
+                class="w-full h-10 pl-9 pr-3 rounded-full bg-surface-variant/20 text-sm text-on-surface outline-hidden placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary/40"
               />
             </div>
             <div class="flex flex-wrap gap-1.5">
@@ -185,7 +185,7 @@
                         @click.stop="cancelInstall(plugin.id)"
                       >
                         <X class="w-3.5 h-3.5" />
-                        <span>取消</span>
+                        <span>{{ $t('plugins.cancel') }}</span>
                       </button>
 
                       <button
@@ -203,7 +203,7 @@
                           <span v-if="downloadProgress[plugin.id] && downloadProgress[plugin.id].total > 0">
                             {{ Math.round((downloadProgress[plugin.id].downloaded / downloadProgress[plugin.id].total) * 100) }}%
                           </span>
-                          <span v-else>准备中...</span>
+                          <span v-else>{{ $t('plugins.marketInstalling') }}</span>
                         </template>
                         <Check v-else-if="installedIds.includes(plugin.id)" class="w-3.5 h-3.5" />
                         <span v-else>
@@ -273,7 +273,7 @@
 
   <Teleport to="body">
     <Transition name="readme" appear>
-      <div v-if="isOpen && readmePlugin" class="fixed inset-0 z-[100] flex flex-col bg-surface">
+      <div v-if="isOpen && readmePlugin" class="fixed inset-0 z-100 flex flex-col bg-surface">
         <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-surface-variant/30">
           <div class="flex items-center gap-2.5 min-w-0">
             <button
@@ -318,19 +318,6 @@
 </template>
 
 <style scoped>
-.dialog-enter-active {
-  transition: opacity 0.18s ease;
-}
-.dialog-enter-from {
-  opacity: 0;
-}
-.dialog-leave-active {
-  transition: opacity 0.12s ease;
-}
-.dialog-leave-to {
-  opacity: 0;
-}
-
 .readme-enter-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
@@ -348,11 +335,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { useI18n } from 'vue-i18n';
 import { ArrowLeft, BookOpen, Check, ExternalLink, GitPullRequest, Loader2, RefreshCw, Search, Store, TriangleAlert, X } from '@lucide/vue';
+import { command, onEvent, openUrl } from '@/platform';
 import {
   loadPluginCatalog,
   marketPluginName,
@@ -448,15 +433,6 @@ const readmeLoading = ref(false);
 const readmeError = ref<string | null>(null);
 const readmeContent = ref('');
 
-interface PluginPreview {
-  id: string;
-  name: string;
-  version: string;
-  capabilities: string[];
-  runtime: string;
-  kind: string;
-}
-
 function onPreviewError(e: Event) {
   const img = e.target as HTMLImageElement;
   img.style.display = 'none';
@@ -489,7 +465,7 @@ async function install(plugin: MarketPlugin) {
   confirmingId.value = plugin.id;
   preview.value = null;
   try {
-    const p = await invoke<PluginPreview>('preview_plugin_from_url', {
+    const p = await command('preview_plugin_from_url', {
       manifestUrl: plugin.manifestUrl,
     });
     preview.value = { capabilities: p.capabilities };
@@ -501,26 +477,30 @@ async function install(plugin: MarketPlugin) {
 
 async function confirmInstall(plugin: MarketPlugin) {
   installingId.value = plugin.id;
+  cancelledIds.delete(plugin.id);
   try {
-    await invoke<string>('install_plugin_from_url', { id: plugin.id, zipUrl: plugin.downloadUrl });
+    await command('install_plugin_from_url', { id: plugin.id, zipUrl: plugin.downloadUrl });
     if (!installedIds.value.includes(plugin.id)) installedIds.value.push(plugin.id);
     void refreshInstalled();
   } catch (cause) {
-    if (cause instanceof Error && cause.message.includes("取消")) {
-      // ignore cancellation error
-    } else {
+    // A cancelled download rejects too; that is not an error to show.
+    if (!cancelledIds.has(plugin.id)) {
       loadError.value = cause instanceof Error ? cause.message : String(cause);
     }
   } finally {
     installingId.value = null;
+    cancelledIds.delete(plugin.id);
     delete downloadProgress.value[plugin.id];
     cancelConfirm();
   }
 }
 
+const cancelledIds = new Set<string>();
+
 async function cancelInstall(id: string) {
+  cancelledIds.add(id);
   try {
-    await invoke('cancel_plugin_download', { id });
+    await command('cancel_plugin_download', { id });
   } catch (e) {
     console.error(e);
   }
@@ -652,10 +632,10 @@ onMounted(async () => {
   void refreshInstalled();
   window.addEventListener('keydown', onKeydown);
 
-  unlistenProgress.value = await listen<{ id: string; downloaded: number; total: number; done: boolean }>(
+  unlistenProgress.value = await onEvent(
     'plugin-download-progress',
-    (event) => {
-      const { id, downloaded, total, done } = event.payload;
+    (payload) => {
+      const { id, downloaded, total, done } = payload;
       if (done) {
         delete downloadProgress.value[id];
       } else {

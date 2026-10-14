@@ -2,7 +2,7 @@
   <Transition name="dialog">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs"
       @click.self="close"
     >
       <div class="surface-dialog flex max-h-[85vh] w-full max-w-4xl flex-col">
@@ -62,7 +62,7 @@
               :key="theme.id"
               class="theme-card overflow-hidden rounded-2xl border border-border/20 bg-surface-container/70 transition-colors hover:border-primary/40"
             >
-              <div class="relative aspect-[16/9] overflow-hidden bg-surface-variant/40">
+              <div class="relative aspect-video overflow-hidden bg-surface-variant/40">
                 <img
                   v-if="theme.preview && !failedPreviews.includes(theme.id)"
                   :src="resolveThemeAssetUrl(theme, theme.preview)"
@@ -74,7 +74,7 @@
                 <div v-else class="flex h-full items-center justify-center bg-primary/10">
                   <Palette class="h-12 w-12 text-primary/70" />
                 </div>
-                <span class="absolute right-3 top-3 rounded-full bg-surface-bright/85 px-2.5 py-1 text-xs font-medium text-on-surface backdrop-blur-sm">
+                <span class="absolute right-3 top-3 rounded-full bg-surface-bright/85 px-2.5 py-1 text-xs font-medium text-on-surface backdrop-blur-xs">
                   v{{ theme.version }}
                 </span>
               </div>
@@ -96,7 +96,7 @@
                     {{ $t('dialogs.themeCatalog.repository') }}
                   </a>
                 </div>
-                <p class="line-clamp-3 min-h-[3.75rem] text-sm leading-relaxed text-on-surface-variant">
+                <p class="line-clamp-3 min-h-15 text-sm leading-relaxed text-on-surface-variant">
                   {{ theme.description }}
                 </p>
                 <p v-if="installError" class="text-xs text-error">
@@ -141,8 +141,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { GitPullRequest, Loader2, Palette, X } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { command, openUrl } from '@/platform';
 import {
   downloadThemePackage,
   githubThemeCatalogProvider,
@@ -182,7 +181,7 @@ const loadCatalog = async () => {
 
 const loadInstalledThemes = async () => {
   try {
-    installedThemeIds.value = await invoke<string[]>('list_installed_themes');
+    installedThemeIds.value = await command('list_installed_themes');
   } catch (cause) {
     console.warn('Failed to load installed themes:', cause);
   }
@@ -194,18 +193,13 @@ const isThemeBusy = (themeId: string) =>
   || switchingThemeId.value === themeId
   || uninstallingThemeId.value === themeId;
 
-interface InstalledTheme {
-  css: string;
-  controlsThemeColor: boolean;
-}
-
 const installTheme = async (theme: ThemeManifest) => {
   if (installingThemeId.value || isInstalled(theme.id)) return;
   installingThemeId.value = theme.id;
   installError.value = null;
   try {
     const themePackage = await downloadThemePackage(theme);
-    await invoke('install_theme', {
+    await command('install_theme', {
       themeId: theme.id,
       manifestJson: JSON.stringify(themePackage.manifest),
       css: themePackage.css,
@@ -228,7 +222,7 @@ const switchTheme = async (theme: ThemeManifest) => {
   switchingThemeId.value = theme.id;
   installError.value = null;
   try {
-    const installedTheme = await invoke<InstalledTheme>('get_installed_theme', {
+    const installedTheme = await command('get_installed_theme', {
       themeId: theme.id,
     });
     activateInstalledTheme(
@@ -248,7 +242,7 @@ const uninstallTheme = async (theme: ThemeManifest) => {
   uninstallingThemeId.value = theme.id;
   installError.value = null;
   try {
-    await invoke('remove_installed_theme', { themeId: theme.id });
+    await command('remove_installed_theme', { themeId: theme.id });
     installedThemeIds.value = installedThemeIds.value.filter((id) => id !== theme.id);
     if (localStorage.getItem('micyou_theme_v2_installed_id') === theme.id) clearInstalledTheme();
   } catch (cause) {

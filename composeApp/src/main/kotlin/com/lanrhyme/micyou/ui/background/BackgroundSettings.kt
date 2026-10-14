@@ -15,17 +15,18 @@
 
 package com.lanrhyme.micyou.ui.background
 
-import io.github.vinceglb.filekit.FileKit
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.extension
-import io.github.vinceglb.filekit.readBytes
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.openFilePicker
+import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
-import com.lanrhyme.micyou.ui.background.BackgroundImagePicker
-import com.lanrhyme.micyou.ui.background.BackgroundSettings
 import com.lanrhyme.micyou.util.ContextHelper
 import com.lanrhyme.micyou.util.Logger
 
@@ -41,11 +42,22 @@ data class BackgroundSettings(
 }
 
 object BackgroundImagePicker {
+    private var launcher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+    private var pending: CompletableDeferred<Uri?>? = null
+
+    // 必须在 Activity 进入 STARTED 之前调用（onCreate 中）；重建时会替换旧的 launcher
+    fun register(activity: ComponentActivity) {
+        launcher = activity.registerForActivityResult(PickVisualMedia()) { uri ->
+            pending?.complete(uri)
+            pending = null
+        }
+    }
+
     fun pickImage(scope: CoroutineScope, onResult: (String?) -> Unit) {
         scope.launch {
             try {
-                val file = FileKit.openFilePicker(type = FileKitType.Image)
-    val savedPath = file?.let { copyToInternalStorage(it) }
+                val uri = pick()
+                val savedPath = uri?.let { copyToInternalStorage(it) }
                 onResult(savedPath)
             } catch (e: Exception) {
                 Logger.e("BackgroundImagePicker", "Failed to pick image", e)
@@ -54,18 +66,29 @@ object BackgroundImagePicker {
         }
     }
 
-    private suspend fun copyToInternalStorage(file: PlatformFile): String? {
-        return try {
-            val context = ContextHelper.getContext() ?: return null
-            val bytes = file.readBytes()
-    val backgroundDir = File(context.filesDir, "backgrounds")
+    private suspend fun pick(): Uri? {
+        val launcher = launcher ?: return null
+        pending?.complete(null)
+        val result = CompletableDeferred<Uri?>()
+        pending = result
+        launcher.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
+        return result.await()
+    }
+
+    private suspend fun copyToInternalStorage(uri: Uri): String? = withContext(Dispatchers.IO) {
+        try {
+            val context = ContextHelper.getContext() ?: return@withContext null
+            val resolver = context.contentResolver
+            val extension = resolver.getType(uri)
+                ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+                ?: "jpg"
+            val backgroundDir = File(context.filesDir, "backgrounds")
             if (!backgroundDir.exists()) {
                 backgroundDir.mkdirs()
             }
-    val extension = file.extension
-            val fileName = "custom_background.$extension"
-            val outputFile = File(backgroundDir, fileName)
-            outputFile.writeBytes(bytes)
+            val outputFile = File(backgroundDir, "custom_background.$extension")
+            val input = resolver.openInputStream(uri) ?: return@withContext null
+            input.use { src -> outputFile.outputStream().use { src.copyTo(it) } }
 
             outputFile.absolutePath
         } catch (e: Exception) {

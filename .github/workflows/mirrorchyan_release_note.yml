@@ -12,7 +12,7 @@ on:
 jobs:
   mirrorchyan:
     runs-on: macos-latest
-    if: ${{ github.repository_owner == 'LanRhyme' }}
+    if: ${{ github.repository_owner == 'MicYou-Dev' }}
 
     steps:
       - id: uploading

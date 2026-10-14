@@ -242,6 +242,7 @@
     <string name="targetIpLabel">目標 IP</string>
     
     <string name="themeColorLabel">主題顏色</string>
+    <string name="colorPickerTitle">揀顏色</string>
     <string name="themeDark">深色</string>
     <string name="themeLabel">主題模式</string>
     <string name="themeLight">淺色</string>
@@ -304,6 +305,7 @@
     <string name="connectionReset">連線被重設：遠端裝置強制閂咗連線</string>
     <string name="connectionSocketClosed">通訊端已閂咗</string>
     <string name="connectionTimeout">連線逾時：檢查吓網路連線或 IP 位址係咪正確</string>
+    <string name="errorIpAddressEmpty">IP 位址唔可以留空</string>
     <string name="connectionUnreachable">到唔到主機：確保手機同電腦喺同一個 Wi-Fi 網路下面</string>
     <string name="done">完成</string>
     

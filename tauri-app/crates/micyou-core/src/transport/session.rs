@@ -79,7 +79,7 @@ pub fn validate_audio_packet(packet: &AudioPacketMessageOrdered) -> bool {
 }
 
 /// Bytes per interleaved PCM frame for an audio packet, if its codec uses PCM.
-fn pcm_frame_size(audio: &micyou_protocol::micyou::AudioPacketMessage) -> Option<usize> {
+pub(crate) fn pcm_frame_size(audio: &micyou_protocol::micyou::AudioPacketMessage) -> Option<usize> {
     let bytes_per_sample = match audio.audio_format {
         2 => 2_usize, // PCM 16-bit
         3 => 1_usize, // PCM 8-bit

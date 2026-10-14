@@ -25,6 +25,7 @@ pub mod config;
 pub mod discovery;
 pub mod events;
 pub mod host;
+pub mod logging;
 pub mod mode_lock;
 pub mod modes;
 pub mod platform;

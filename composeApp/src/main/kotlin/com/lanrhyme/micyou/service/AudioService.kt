@@ -21,6 +21,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -28,18 +29,19 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.net.wifi.WifiManager
 import android.app.PendingIntent
-import android.app.AlarmManager
 import androidx.core.app.NotificationCompat
-import kotlinx.coroutines.runBlocking
+import androidx.core.app.ServiceCompat
 import com.lanrhyme.micyou.audio.AudioEngine
 import com.lanrhyme.micyou.MainActivity
-import com.lanrhyme.micyou.service.AudioService
 import com.lanrhyme.micyou.util.AppLanguage
+import com.lanrhyme.micyou.util.appLocale
 import com.lanrhyme.micyou.util.getString
 class AudioService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    /** Whether this instance has called startForeground. */
+    private var inForeground = false
 
     companion object {
         private const val CHANNEL_ID = "AudioServiceChannel"
@@ -49,10 +51,6 @@ class AudioService : Service() {
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_DISCONNECT = "ACTION_DISCONNECT"
         const val EXTRA_USE_WIFI_LOCK = "EXTRA_USE_WIFI_LOCK"
-        const val PREFS_NAME = "android_mic_prefs"
-        const val KEY_WIFI_LOCK = "audio_wifi_lock"
-        const val KEY_STREAMING = "audio_streaming"
-        private const val RESTART_DELAY_MS = 5000L
     }
 
     override fun onCreate() {
@@ -63,24 +61,26 @@ class AudioService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startForegroundService(
-                intent.getBooleanExtra(EXTRA_USE_WIFI_LOCK, readWifiLockFlag()),
+                intent.getBooleanExtra(EXTRA_USE_WIFI_LOCK, false),
                 streaming = true
             )
             ACTION_START_IDLE -> startForegroundService(useWifiLock = false, streaming = false)
-            ACTION_STOP -> enterIdle()
+            // Streaming ended. A fresh instance means the service was already stopped
+            // (the app was swiped away): there is no notification to downgrade, and
+            // startForeground from the background would throw on Android 12+.
+            ACTION_STOP -> if (inForeground) enterIdle() else stopSelf()
             ACTION_DISCONNECT -> {
                 AudioEngine.requestDisconnectFromNotification()
                 enterIdle()
             }
-            null -> startForegroundService(readWifiLockFlag(), streaming = readStreamingFlag())
         }
-        return START_STICKY
+        // The stream lives in AudioEngine, which dies with the process: a service the
+        // system recreates would only show a stale notification, and Android 14+ refuses
+        // to start a microphone foreground service from the background anyway.
+        return START_NOT_STICKY
     }
 
     private fun startForegroundService(useWifiLock: Boolean, streaming: Boolean) {
-        writeWifiLockFlag(useWifiLock)
-        writeStreamingFlag(streaming)
-        cancelRestartAlarm()
         if (streaming) {
             acquireSessionLocks(useWifiLock)
         } else {
@@ -98,10 +98,10 @@ class AudioService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+        inForeground = true
     }
 
     private fun enterIdle() {
-        writeStreamingFlag(false)
         releaseSessionLocks()
         val notification = createNotification(streaming = false)
 
@@ -150,24 +150,13 @@ class AudioService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        scheduleRestart()
-    }
-
-    // [API 21+ 兼容] setExactAndAllowWhileIdle() 是 API 23+ 才有的，
-    // 低版本用 setExact() 替代（虽不支持空闲时精确唤醒，但兼容模式 targetSdk 29 不需要 Doze 模式适配）。
-    private fun scheduleRestart() {
-        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = System.currentTimeMillis() + RESTART_DELAY_MS
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent())
-        } else {
-            alarm.setExact(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent())
-        }
-    }
-
-    private fun cancelRestartAlarm() {
-        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarm.cancel(restartPendingIntent())
+        // Swiping the app away exits it, streaming or not. The engine belongs to the
+        // activity's view model and stops with it anyway; stop it here explicitly.
+        AudioEngine.requestDisconnectFromNotification()
+        releaseSessionLocks()
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        inForeground = false
+        stopSelf()
     }
 
     // [API 21+ 兼容] PendingIntent.FLAG_IMMUTABLE 是 API 23+ 才有的常量，
@@ -177,34 +166,6 @@ class AudioService : Service() {
     } else {
         PendingIntent.FLAG_UPDATE_CURRENT
     }
-
-    private fun restartPendingIntent(): PendingIntent =
-        PendingIntent.getBroadcast(
-            this,
-            0,
-            Intent(this, RestartReceiver::class.java).apply { action = ACTION_START },
-            pendingIntentFlags()
-        )
-
-    private fun writeWifiLockFlag(useWifiLock: Boolean) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_WIFI_LOCK, useWifiLock)
-            .apply()
-    }
-
-    private fun readWifiLockFlag(): Boolean =
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_WIFI_LOCK, false)
-
-    private fun writeStreamingFlag(streaming: Boolean) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_STREAMING, streaming)
-            .apply()
-    }
-
-    private fun readStreamingFlag(): Boolean =
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_STREAMING, false)
 
     override fun onDestroy() {
         releaseSessionLocks()
@@ -250,40 +211,34 @@ class AudioService : Service() {
     }
 
     private fun resolveNotificationText(): Pair<String, String> {
-        val selectedLanguage = readSelectedLanguage()
-        return when (selectedLanguage) {
-            AppLanguage.English -> "MicYou Streaming" to "Tap to disconnect"
-            AppLanguage.Chinese -> "MicYou 正在传输" to "点击断开连接"
-            AppLanguage.ChineseTraditional -> "MicYou 正在傳輸" to "點擊中斷連線"
-            AppLanguage.Cantonese -> "MicYou 傳輸緊" to "撳掣斷開連線"
-            else -> getString(R.string.streaming_notification_title) to getString(R.string.streaming_notification_text)
-        }
+        val context = localizedContext()
+        return context.getString(R.string.streaming_notification_title) to
+            context.getString(R.string.streaming_notification_text)
     }
 
     private fun resolveIdleNotificationText(): Pair<String, String> {
-        val selectedLanguage = readSelectedLanguage()
-        return when (selectedLanguage) {
-            AppLanguage.English -> "MicYou is on" to "Tap to manage"
-            AppLanguage.Chinese -> "MicYou 已开启" to "点击管理"
-            AppLanguage.ChineseTraditional -> "MicYou 已開啟" to "點擊管理"
-            AppLanguage.Cantonese -> "MicYou 開咗" to "撳掣管理"
-            else -> getString(R.string.notification_idle_title) to getString(R.string.notification_idle_text)
-        }
+        val context = localizedContext()
+        return context.getString(R.string.notification_idle_title) to
+            context.getString(R.string.notification_idle_text)
     }
 
-    private fun readSelectedLanguage(): AppLanguage {
-        val prefs = getSharedPreferences("android_mic_prefs", Context.MODE_PRIVATE)
-    val saved = prefs.getString("language", AppLanguage.System.name)
-        return try {
-            AppLanguage.valueOf(saved ?: AppLanguage.System.name)
-        } catch (_: Exception) {
-            AppLanguage.System
-        }
+    /**
+     * Resources in the language picked in the app. The service can run without the
+     * activity (Quick Settings tile), so it reads the preference itself instead of
+     * relying on the locale the activity installs.
+     */
+    private fun localizedContext(): Context {
+        val saved = getSharedPreferences("android_mic_prefs", Context.MODE_PRIVATE)
+            .getString("language", AppLanguage.System.name)
+        val language = AppLanguage.entries.firstOrNull { it.name == saved } ?: AppLanguage.System
+        if (language == AppLanguage.System) return this
+        val config = Configuration(resources.configuration).apply { setLocale(appLocale(language.code)) }
+        return createConfigurationContext(config)
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channelName = runBlocking { getString(R.string.audioStreamingService) }
+            val channelName = getString(R.string.audioStreamingService)
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 channelName,

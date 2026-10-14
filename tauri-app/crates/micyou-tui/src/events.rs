@@ -13,12 +13,12 @@
  * GNU General Public License for more details.
  */
 
-use std::sync::mpsc::Sender;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
 use micyou_core::events::{AecStatus, DownloadProgress, ServerEvents, SpectrumPayload};
 use micyou_core::stats::AudioMetrics;
 use micyou_core::transport::tcp::DeviceInfo;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Sender;
+use std::time::Instant;
 
 /// Server events consumed by the interactive terminal UI.
 #[derive(Debug, Clone)]
@@ -34,24 +34,61 @@ pub enum Event {
     WebClientCount(u32),
     InstallProgress(String),
     AecStatus(AecStatus),
+    /// A `log` record already formatted with its level tag.
+    Log(String),
 }
 
 /// Forward server events to the TUI channel while throttling high-frequency
 /// audio visualization updates to the terminal's useful refresh rate.
 pub struct TuiEventSink {
     tx: Sender<Event>,
-    last_level: Mutex<Instant>,
-    last_spectrum: Mutex<Instant>,
+    level: Throttle,
+    spectrum: Throttle,
 }
 
 impl TuiEventSink {
     pub fn new(tx: Sender<Event>) -> Self {
-        let past = Instant::now() - Duration::from_secs(10);
         Self {
             tx,
-            last_level: Mutex::new(past),
-            last_spectrum: Mutex::new(past),
+            level: Throttle::default(),
+            spectrum: Throttle::default(),
         }
+    }
+}
+
+/// Lets one update through per interval; called from the audio thread, so
+/// it never blocks.
+struct Throttle {
+    epoch: Instant,
+    /// Milliseconds after `epoch` when the next update may pass.
+    next_ms: AtomicU64,
+}
+
+impl Default for Throttle {
+    fn default() -> Self {
+        Self {
+            epoch: Instant::now(),
+            next_ms: AtomicU64::new(0),
+        }
+    }
+}
+
+impl Throttle {
+    const INTERVAL_MS: u64 = 70;
+
+    fn ready(&self) -> bool {
+        let now = self.epoch.elapsed().as_millis() as u64;
+        let next = self.next_ms.load(Ordering::Relaxed);
+        now >= next
+            && self
+                .next_ms
+                .compare_exchange(
+                    next,
+                    now + Self::INTERVAL_MS,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
     }
 }
 
@@ -77,20 +114,16 @@ impl ServerEvents for TuiEventSink {
     }
 
     fn audio_level(&self, level: u32) {
-        let mut last = self.last_level.lock().unwrap();
-        if last.elapsed() >= Duration::from_millis(70) {
-            *last = Instant::now();
-            drop(last);
+        if self.level.ready() {
             let _ = self.tx.send(Event::Level(level));
         }
     }
 
     fn audio_spectrum(&self, spectrum: SpectrumPayload) {
-        let mut last = self.last_spectrum.lock().unwrap();
-        if last.elapsed() >= Duration::from_millis(70) {
-            *last = Instant::now();
-            drop(last);
-            let _ = self.tx.send(Event::Spectrum(spectrum.raw, spectrum.processed));
+        if self.spectrum.ready() {
+            let _ = self
+                .tx
+                .send(Event::Spectrum(spectrum.raw, spectrum.processed));
         }
     }
 

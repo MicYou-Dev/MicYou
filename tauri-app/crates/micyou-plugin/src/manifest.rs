@@ -38,12 +38,16 @@ pub const MANIFEST_FILE_NAME: &str = "plugin.json";
 /// Reverse-DNS plugin id (e.g. `dev.micyou.eq`). Allowed charset:
 /// lowercase alphanumerics plus `.` and `-`, at least one dot.
 pub fn validate_plugin_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 128
+    // The id names the plugin's directory, so every dot-separated label must
+    // be non-empty: "..", ".x" or "x." would not be reverse-DNS anyway.
+    id.len() <= 128
         && id.contains('.')
-        && id
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+        && id.split('.').all(|label| {
+            !label.is_empty()
+                && label
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
 }
 
 /// Runtime type. `Native` loads a platform cdylib (`.so` / `.dylib` / `.dll`),
@@ -581,7 +585,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_plugin_id() {
-        for bad in ["no-dot", "Uppercase.Id", "a/b", "", "sp ace", "中文.id"] {
+        for bad in ["no-dot", "Uppercase.Id", "a/b", "", "sp ace", "中文.id", "..", ".a", "a.", "a..b"] {
             let json = format!(
                 r#"{{"id":"{bad}","name":"x","version":"1.0.0","runtime":"wasm","entry":"x.wasm"}}"#
             );

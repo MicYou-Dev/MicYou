@@ -1,6 +1,6 @@
 <template>
   <Transition name="dialog">
-  <div v-if="isOpen" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="$emit('close')">
+  <div v-if="isOpen" class="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs" @click.self="$emit('close')">
     <div class="bg-surface-bright w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-surface-variant/20">
       
       <div class="flex items-center justify-between mb-6">
@@ -36,19 +36,7 @@
         <!-- Advanced Toggle -->
         <div class="flex items-center justify-between pt-2 border-t border-surface-variant/20">
           <span class="text-sm font-medium text-on-surface">{{ $t('settings.customColor.advanced') }}</span>
-          <button
-            @click="advanced = !advanced"
-            class="group relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:scale-95"
-            :class="advanced ? 'border-primary bg-primary' : 'border-on-surface-variant bg-transparent hover:bg-on-surface-variant/10'"
-          >
-            <div class="relative flex items-center justify-center transition-transform duration-300 ease-out" :class="advanced ? 'translate-x-[26px]' : 'translate-x-[4px]'">
-              
-              <span
-                class="pointer-events-none block rounded-full shadow-sm ring-0 transition-transform duration-300 ease-out"
-                :class="advanced ? 'h-6 w-6 bg-on-primary' : 'h-4 w-4 bg-on-surface group-hover:scale-125'"
-              />
-            </div>
-          </button>
+          <MD3Switch v-model="advanced" />
         </div>
 
         <!-- Advanced Sliders -->
@@ -78,7 +66,7 @@
         <button @click="$emit('close')" class="flex-1 py-2.5 rounded-xl font-medium text-sm bg-surface-container hover:bg-surface-variant text-on-surface transition-colors">
           {{ $t('dialogs.cancel') }}
         </button>
-        <button @click="applyColor" class="flex-1 py-2.5 rounded-xl font-medium text-sm bg-primary text-on-primary hover:opacity-90 transition-opacity shadow-sm">
+        <button @click="applyColor" class="flex-1 py-2.5 rounded-xl font-medium text-sm bg-primary text-on-primary hover:opacity-90 transition-opacity shadow-xs">
           {{ $t('dialogs.apply') }}
         </button>
       </div>
@@ -89,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import MD3Switch from '@/shared/components/ui/switch/MD3Switch.vue';
 import MD3Slider from "@/shared/components/ui/slider/MD3Slider.vue"
 import { ref, watch } from 'vue';
 import { X } from '@lucide/vue';

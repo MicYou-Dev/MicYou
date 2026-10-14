@@ -10,7 +10,9 @@
       "connecting": "等緊裝置...",
       "starting": "服務啟動緊...",
       "ready": "準備就緒",
-      "streamingDesc": "已經成功連接 Android 裝置",
+      "streamingDesc": "已經成功連接裝置",
+      "streamingDescAndroid": "已經成功連接 Android 裝置",
+      "streamingDescIos": "已經成功連接 iOS 裝置",
       "connectingDesc": "喺埠口 {port} 度監聽緊",
       "startingDesc": "初始化緊音訊服務，請等吓",
       "readyDesc": "㩒開始掣等連線",
@@ -47,7 +49,6 @@
       "aecDisabled": "AEC 唔可用，已自動停用",
       "aecDisabledInferenceFailed": "AEC 音訊處理失敗，已自動停用",
       "aecDisabledModelLoadFailed": "AEC AI 模型載入失敗，已自動停用",
-      "aecDisabledModelMissing": "搵唔到 AEC AI 模型，已自動停用",
       "aecDisabledPermissionDenied": "未獲授權錄系統音訊，AEC 已自動停用",
       "aecDisabledPipeWireUnavailable": "PipeWire 唔可用，AEC 已自動停用",
       "aecDisabledReferenceLost": "AEC 音訊參考流已中斷，已自動停用",
@@ -283,7 +284,7 @@
       "copied": "已複製",
       "exportLog": "匯出日誌",
       "introTitle": "軟件介紹",
-      "introText": "MicYou 係一個開源嘅咪高峰工具，可以將你嘅 Android 裝置變做電腦嘅高質素咪高峰，支援 Wi-Fi (TCP) 同 USB 連線，畀到低延遲嘅音訊傳輸體驗"
+      "introText": "MicYou 係一個開源嘅咪高峰工具，可以將你嘅 Android 或者 iOS 裝置變做電腦嘅高質素咪高峰，支援 Wi-Fi (TCP) 同 USB 連線，畀到低延遲嘅音訊傳輸體驗"
     },
     "runMode": {
       "title": "運行模式",
@@ -560,6 +561,7 @@
       "checkAntivirus": "檢查防毒或者安全軟件設定",
       "checkUsbCable": "檢查 USB 線連線",
       "enableUsbDebugging": "喺 Android 開發人員選項度開 USB 偵錯",
+      "connectIosOverUsb": "iPhone 或者 iPad：打開 MicYou，電腦揀「USB 傳輸線」再撳連線；Windows 仲要裝 iTunes",
       "runAdbCommand": "喺電腦度行呢個指令：{cmd}",
       "checkAdbInstalled": "確保電腦裝咗 ADB",
       "runAdbManually": "手動執行：{cmd}",
@@ -575,7 +577,7 @@
   },
   "onboarding": {
     "title": "歡迎使用 MicYou",
-    "desc": "您好似係第一次使用 MicYou，呢個 App 可以將你嘅 Android 裝置透過 Wi-Fi 或者 USB 變做電腦嘅高質量咪高峰",
+    "desc": "您好似係第一次使用 MicYou，呢個 App 可以將你嘅 Android 或者 iOS 裝置透過 Wi-Fi 或者 USB 變做電腦嘅高質量咪高峰",
     "quickStart": "快速入門指南",
     "step1Title": "1. 安裝桌面應用程式",
     "step1Desc": "喺電腦下載同安裝 MicYou 桌面應用程式",
@@ -669,6 +671,17 @@
     "uninstallConfirm": "確定卸載 {name}？",
     "marketSearch": "搜尋外掛程式商店",
     "marketAll": "全部",
-    "marketContribute": "貢獻外掛程式"
+    "marketContribute": "貢獻外掛程式",
+    "saving": "儲存中…",
+    "importPreview": {
+      "title": "安裝外掛程式？",
+      "name": "名稱",
+      "version": "版本",
+      "author": "作者",
+      "license": "授權",
+      "runtime": "類型",
+      "capabilities": "請求的能力",
+      "none": "（無）"
+    }
   }
 }

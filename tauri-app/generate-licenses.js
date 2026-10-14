@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +11,40 @@ const outputFile = path.join(generatedDir, 'third-party-licenses.html');
 const bunLockFile = path.join(appDir, 'bun.lock');
 
 await mkdir(generatedDir, { recursive: true });
+
+// cargo-about takes ~20 s, so the report is only rebuilt when an input changes.
+// The fingerprint of the inputs is stored on the first line of the report.
+async function inputFingerprint() {
+  const crateDirs = (await readdir(path.join(appDir, 'crates'))).map((dir) => path.join('crates', dir));
+  const resources = (await readdir(resourcesDir)).filter((file) => /^LICENSE-.+\.txt$/i.test(file));
+  const inputs = [
+    'generate-licenses.js',
+    'about.toml',
+    'about.hbs',
+    'Cargo.lock',
+    'bun.lock',
+    'package.json',
+    'Cargo.toml',
+    path.join('src-tauri', 'Cargo.toml'),
+    ...crateDirs.map((dir) => path.join(dir, 'Cargo.toml')),
+    ...resources.map((file) => path.join('src-tauri', 'resources', file)),
+  ].sort();
+  const hash = createHash('sha256');
+  for (const input of inputs) {
+    hash.update(input);
+    hash.update(await readFile(path.join(appDir, input)).catch(() => ''));
+  }
+  return hash.digest('hex');
+}
+
+const fingerprint = await inputFingerprint();
+const stamp = `<!-- licenses-inputs: ${fingerprint} -->`;
+const force = process.argv.includes('--force');
+const previous = await readFile(outputFile, 'utf8').catch(() => '');
+if (!force && previous.startsWith(stamp)) {
+  console.log('[licenses] Inputs unchanged, keeping the existing report (--force to rebuild)');
+  process.exit(0);
+}
 
 const escapeHtml = (value) =>
   String(value)
@@ -278,5 +313,5 @@ const [rustReport, npmReport, assetReport] = await Promise.all([
   generateNpmReport(),
   generateAssetReport(),
 ]);
-await writeFile(outputFile, `${assetReport}\n${npmReport}\n${rustReport}`);
+await writeFile(outputFile, `${stamp}\n${assetReport}\n${npmReport}\n${rustReport}`);
 console.log(`[licenses] Report written to ${path.relative(appDir, outputFile)}`);

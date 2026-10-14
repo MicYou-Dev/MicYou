@@ -7,24 +7,20 @@ license.workspace = true
 
 [features]
 default = ["dsp"]
-dsp = ["dep:nnnoiseless", "dep:ort", "dep:rustfft", "dep:ndarray"]
-noise-suppression = ["dsp"]
+dsp = ["dep:nnnoiseless", "dep:rustfft"]
+noise-suppression = ["dsp", "dep:micyou-infer"]
 
 [dependencies]
-micyou-protocol = { path = "../micyou-protocol" }
 serde = { version = "1", features = ["derive"] }
 log = "0.4.32"
-cpal = "0.15.3"
-rubato = "3.0.0"
-ringbuf = "0.3.3"
+cpal.workspace = true
+rubato = "5.0.1"
+ringbuf = "0.5.2"
 
 # DSP dependencies (optional)
 nnnoiseless = { version = "0.5.2", optional = true }
-# default-features enables api-27, which makes the crate reject any runtime older than
-# 1.27, so the universal2 build of ONNX Runtime 1.19.2 (macOS 11 floor) could not be used.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "tls-rustls", "std", "ndarray", "api-19"], optional = true }
+micyou-infer = { workspace = true, optional = true }
 rustfft = { version = "6.4.1", optional = true }
-ndarray = { version = "0.17", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Core Audio process taps need Objective-C runtime access and a CoreFoundation
@@ -33,4 +29,4 @@ objc = "0.2"
 core-foundation = "0.10"
 
 [target.'cfg(windows)'.dependencies]
-wasapi = "0.16"
+wasapi = "0.25"

@@ -19,7 +19,6 @@ use super::audio_pipeline::{self, Pipeline};
 use super::lifecycle::{await_startup_ready, AUDIO_JOIN_TIMEOUT, STARTUP_TIMEOUT};
 use super::output;
 use super::ServerState;
-use crate::platform::resources::{find_ort_runtime, ort_runtime_filename};
 use crate::transport::session::AudioStreamEvent;
 use serde::Deserialize;
 use std::sync::atomic::Ordering;
@@ -58,7 +57,9 @@ impl std::str::FromStr for ConnectionMode {
             "wifi" => Ok(Self::Wifi),
             "usb" => Ok(Self::Usb),
             "web" => Ok(Self::Web),
-            other => Err(format!("invalid mode '{other}' (expected wifi, usb or web)")),
+            other => Err(format!(
+                "invalid mode '{other}' (expected wifi, usb or web)"
+            )),
         }
     }
 }
@@ -84,10 +85,7 @@ impl StartRequest {
     ) -> Result<Self, String> {
         let prefs = crate::config::load_server_prefs();
         let mode = mode.unwrap_or(&prefs.mode).parse()?;
-        let bind_address = bind_address.or_else(|| {
-            let saved = prefs.bind_address.trim();
-            (!prefs.auto_bind && !saved.is_empty() && saved != "0.0.0.0").then(|| saved.to_string())
-        });
+        let bind_address = bind_address.or_else(|| saved_bind_address(&prefs, mode));
         Ok(Self {
             port: port.unwrap_or(prefs.port),
             mode,
@@ -96,6 +94,25 @@ impl StartRequest {
                 .or_else(|| output::normalize_output_device(&prefs.output_device)),
         })
     }
+}
+
+/// The interface picked in the GUI, if any. USB mode ignores it like the GUI
+/// does: `adb reverse` delivers connections on loopback, which a server bound
+/// to a LAN address would refuse. See [`listen_address`] for where USB binds.
+/// Where the server listens. USB mode stays on loopback, where both `adb
+/// reverse` and the iOS usbmux bridge arrive, so phones on Wi-Fi cannot
+/// connect to a server the user started for a cable.
+fn listen_address(mode: ConnectionMode, bind_address: Option<String>) -> String {
+    match mode {
+        ConnectionMode::Usb => "127.0.0.1".to_string(),
+        _ => bind_address.unwrap_or_else(|| "0.0.0.0".to_string()),
+    }
+}
+
+fn saved_bind_address(prefs: &crate::config::ServerPrefs, mode: ConnectionMode) -> Option<String> {
+    let saved = prefs.bind_address.trim();
+    (mode != ConnectionMode::Usb && !prefs.auto_bind && !saved.is_empty() && saved != "0.0.0.0")
+        .then(|| saved.to_string())
 }
 
 /// Returns the UDP audio port (TCP port + 1) for non-web modes.
@@ -175,7 +192,9 @@ fn output_buffer_ms(state: &ServerState) -> usize {
         .dsp_settings
         .read()
         .map(|s| (s.output_buffer_ms as usize).clamp(100, 1200))
-        .unwrap_or_else(|poisoned| (poisoned.into_inner().output_buffer_ms as usize).clamp(100, 1200))
+        .unwrap_or_else(|poisoned| {
+            (poisoned.into_inner().output_buffer_ms as usize).clamp(100, 1200)
+        })
 }
 
 /// Open the persistent output device with the saved preferences. The GUI
@@ -199,19 +218,6 @@ pub fn close_output_device(state: &ServerState) {
     crate::platform::pipewire::cleanup();
 }
 
-fn load_onnx_runtime(resource_dir: Option<&std::path::Path>) {
-    // The official Microsoft build dispatches AVX2/SSE kernels at runtime, so
-    // it also works on CPUs without AVX2.
-    match find_ort_runtime(resource_dir) {
-        Some(path) => {
-            if let Err(e) = micyou_audio::init_ort_runtime(&path) {
-                log::error!("Failed to load ONNX Runtime from {}: {e}", path.display());
-            }
-        }
-        None => log::warn!("ONNX Runtime library ({}) not found", ort_runtime_filename()),
-    }
-}
-
 pub async fn start_server(state: &ServerState, request: StartRequest) -> Result<String, String> {
     let StartRequest {
         port,
@@ -222,17 +228,12 @@ pub async fn start_server(state: &ServerState, request: StartRequest) -> Result<
     let udp_port = validate_server_port(port, mode)?;
 
     let _lifecycle_guard = state.lifecycle_gate.enter().await;
+    // The lifecycle phase is the single source of truth for "running": a
+    // token only exists between a successful begin_start and the next stop.
     state.lifecycle.lock().await.begin_start().await?;
-    let bind_addr = bind_address.unwrap_or_else(|| "0.0.0.0".to_string());
-    let cancel_token = {
-        let mut token_lock = state.cancel_token.lock().await;
-        if token_lock.is_some() {
-            return Err("Server is already running".to_string());
-        }
-        let token = CancellationToken::new();
-        *token_lock = Some(token.clone());
-        token
-    };
+    let bind_addr = listen_address(mode, bind_address);
+    let cancel_token = CancellationToken::new();
+    *state.cancel_token.lock().await = Some(cancel_token.clone());
 
     // Settings may have been edited by another frontend since launch.
     let file_settings = crate::config::load_dsp_settings();
@@ -241,10 +242,16 @@ pub async fn start_server(state: &ServerState, request: StartRequest) -> Result<
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = file_settings;
 
-    let mdns = crate::discovery::NetworkManager::start_mdns(port, &bind_addr).map_err(|e| e.to_string());
-    match mdns {
-        Ok(manager) => *state.mdns_manager.lock().await = Some(manager),
-        Err(e) => log::warn!("[Server] mDNS unavailable, phones must enter the IP manually: {e}"),
+    // Web mode advertises its own HTTPS service type; announcing the TCP
+    // control service there would point phones at a port that speaks TLS.
+    // USB mode listens on loopback only, so there is nothing to announce.
+    if mode == ConnectionMode::Wifi {
+        match crate::discovery::NetworkManager::start_mdns(port, &bind_addr) {
+            Ok(manager) => *state.mdns_manager.lock().await = Some(manager),
+            Err(e) => {
+                log::warn!("[Server] mDNS unavailable, phones must enter the IP manually: {e}")
+            }
+        }
     }
 
     // Pick up plugins installed by another frontend since the last start.
@@ -253,7 +260,6 @@ pub async fn start_server(state: &ServerState, request: StartRequest) -> Result<
     state.plugins.ensure_plugin_chain_node(&state.dsp_settings);
 
     let resource_dir = state.resource_dir();
-    load_onnx_runtime(resource_dir.as_deref());
 
     let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(AUDIO_CHANNEL_CAPACITY);
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
@@ -333,11 +339,15 @@ pub async fn start_server(state: &ServerState, request: StartRequest) -> Result<
         let error = format!("Failed to start network server: {error}");
         return fail_start(state, &cancel_token, vec![tcp_task, udp_task], error).await;
     }
-    state
-        .background_tasks
-        .lock()
-        .await
-        .extend([tcp_task, udp_task]);
+    let mut tasks = vec![tcp_task, udp_task];
+    // iOS reaches USB mode through usbmuxd instead of adb reverse.
+    if mode == ConnectionMode::Usb {
+        tasks.push(tokio::spawn(crate::platform::usbmux::run_bridge(
+            port,
+            cancel_token.clone(),
+        )));
+    }
+    state.background_tasks.lock().await.extend(tasks);
     state.lifecycle.lock().await.mark_running();
     log::info!("[Server] started on port {port} ({})", mode.as_str());
     Ok(format!("Server started on port {port}"))
@@ -358,16 +368,14 @@ async fn start_web(
     let (web_audio_tx, mut web_audio_rx) =
         tokio::sync::mpsc::channel::<(u64, AudioPacketMessage)>(AUDIO_CHANNEL_CAPACITY);
     if let Err(e) = web_server
-        .start(port, state.events.clone(), web_audio_tx)
+        .start(port, bind_addr, state.events.clone(), web_audio_tx)
         .await
     {
         let error = format!("Failed to start web server: {e}");
         return fail_start(state, cancel_token, Vec::new(), error).await;
     }
 
-    let web_mdns =
-        crate::discovery::NetworkManager::start_web_mdns(port, bind_addr).map_err(|e| e.to_string());
-    match web_mdns {
+    match crate::discovery::NetworkManager::start_web_mdns(port, bind_addr) {
         Ok(manager) => *state.web_mdns.lock().await = Some(manager),
         Err(e) => log::warn!("[Server] web mDNS unavailable: {e}"),
     }
@@ -402,7 +410,7 @@ async fn start_web(
                 session_id: 0,
                 fec_packet_lengths: Vec::new(),
             };
-            seq += 1;
+            seq = seq.wrapping_add(1);
             if !validate_audio_packet(&ordered) {
                 continue;
             }
@@ -487,7 +495,33 @@ pub async fn stop_server(state: &ServerState) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_server_port, ConnectionMode};
+    use super::{listen_address, saved_bind_address, validate_server_port, ConnectionMode};
+    use crate::config::ServerPrefs;
+
+    #[test]
+    fn usb_mode_listens_on_loopback_only() {
+        assert_eq!(listen_address(ConnectionMode::Usb, Some("192.168.8.92".into())), "127.0.0.1");
+        assert_eq!(listen_address(ConnectionMode::Usb, None), "127.0.0.1");
+        assert_eq!(listen_address(ConnectionMode::Wifi, None), "0.0.0.0");
+        assert_eq!(
+            listen_address(ConnectionMode::Wifi, Some("192.168.8.92".into())),
+            "192.168.8.92"
+        );
+    }
+
+    #[test]
+    fn usb_mode_ignores_the_saved_interface() {
+        let prefs = ServerPrefs {
+            auto_bind: false,
+            bind_address: "192.168.8.92".to_string(),
+            ..ServerPrefs::default()
+        };
+        assert_eq!(saved_bind_address(&prefs, ConnectionMode::Usb), None);
+        assert_eq!(
+            saved_bind_address(&prefs, ConnectionMode::Wifi).as_deref(),
+            Some("192.168.8.92")
+        );
+    }
 
     #[test]
     fn non_web_port_zero_is_rejected() {
@@ -496,7 +530,10 @@ mod tests {
 
     #[test]
     fn non_web_port_65534_produces_last_udp_port() {
-        assert_eq!(validate_server_port(65534, ConnectionMode::Wifi), Ok(Some(65535)));
+        assert_eq!(
+            validate_server_port(65534, ConnectionMode::Wifi),
+            Ok(Some(65535))
+        );
     }
 
     #[test]

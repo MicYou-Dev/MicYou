@@ -48,7 +48,7 @@ pub fn is_installed() -> bool {
     let host = cpal::default_host();
     if let Ok(devices) = host.output_devices() {
         for dev in devices {
-            if let Ok(name) = dev.name() {
+            if let Some(name) = micyou_audio::device_name(&dev) {
                 if is_blackhole_name(&name) {
                     return true;
                 }
@@ -71,7 +71,7 @@ fn find_blackhole_device_name() -> Option<String> {
     let host = cpal::default_host();
     if let Ok(devices) = host.output_devices() {
         for dev in devices {
-            if let Ok(name) = dev.name() {
+            if let Some(name) = micyou_audio::device_name(&dev) {
                 if is_blackhole_name(&name) {
                     return Some(name);
                 }

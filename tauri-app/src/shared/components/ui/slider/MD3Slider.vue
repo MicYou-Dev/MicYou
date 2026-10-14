@@ -25,7 +25,7 @@ const emits = defineEmits<{
     <SliderTrack class="relative h-4 w-full grow overflow-hidden rounded-full bg-surface-variant/70 transition-colors duration-300 group-hover:bg-surface-variant">
       <SliderRange class="absolute h-full bg-primary transition-colors duration-100 ease-out" />
     </SliderTrack>
-    <SliderThumb class="block focus-visible:outline-none relative w-1.5 h-10 border-0 outline-none">
+    <SliderThumb class="block focus-visible:outline-hidden relative w-1.5 h-10 border-0 outline-hidden">
       <div class="w-full h-full rounded-full bg-primary shadow-md ring-offset-background transition-[transform,background-color,box-shadow] duration-300 ease-out">
       </div>
     </SliderThumb>

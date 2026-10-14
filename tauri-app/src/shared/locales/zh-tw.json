@@ -10,7 +10,9 @@
       "connecting": "等待裝置連線...",
       "starting": "服務啟動中...",
       "ready": "準備就緒",
-      "streamingDesc": "已成功連線至 Android 裝置",
+      "streamingDesc": "已成功連線至裝置",
+      "streamingDescAndroid": "已成功連線至 Android 裝置",
+      "streamingDescIos": "已成功連線至 iOS 裝置",
       "connectingDesc": "正在監聽連接埠 {port}",
       "startingDesc": "正在初始化音訊服務，請稍候",
       "readyDesc": "點擊開始以等待連線",
@@ -47,7 +49,6 @@
       "aecDisabled": "AEC 不可用，已自動停用",
       "aecDisabledInferenceFailed": "AEC 音訊處理失敗，已自動停用",
       "aecDisabledModelLoadFailed": "AEC AI 模型載入失敗，已自動停用",
-      "aecDisabledModelMissing": "找不到 AEC AI 模型，已自動停用",
       "aecDisabledPermissionDenied": "未獲錄製系統音訊的授權，AEC 已自動停用",
       "aecDisabledPipeWireUnavailable": "PipeWire 不可用，AEC 已自動停用",
       "aecDisabledReferenceLost": "AEC 音訊參考流已中斷，已自動停用",
@@ -283,7 +284,7 @@
       "copied": "已複製",
       "exportLog": "匯出紀錄",
       "introTitle": "軟體介紹",
-      "introText": "MicYou 是一款開源的麥克風工具，可以將您的 Android 裝置變成電腦的高品質麥克風，支援 Wi-Fi 和 USB 連線，提供低延遲的音訊傳輸體驗"
+      "introText": "MicYou 是一款開源的麥克風工具，可以將您的 Android 或 iOS 裝置變成電腦的高品質麥克風，支援 Wi-Fi 和 USB 連線，提供低延遲的音訊傳輸體驗"
     },
     "runMode": {
       "title": "執行模式",
@@ -560,6 +561,7 @@
       "checkAntivirus": "檢查防毒或安全軟體設定",
       "checkUsbCable": "檢查 USB 傳輸線連線",
       "enableUsbDebugging": "在 Android 開發人員選項中啟用 USB 偵錯",
+      "connectIosOverUsb": "iPhone 或 iPad：開啟 MicYou，電腦選擇「USB 傳輸線」後點選連線；Windows 還需要安裝 iTunes",
       "runAdbCommand": "在電腦上執行此指令：{cmd}",
       "checkAdbInstalled": "確保電腦上已安裝 ADB",
       "runAdbManually": "手動執行：{cmd}",
@@ -575,7 +577,7 @@
   },
   "onboarding": {
     "title": "歡迎使用 MicYou",
-    "desc": "本應用可以將您的 Android 裝置透過 Wi-Fi 或 USB 變成電腦的高品質麥克風",
+    "desc": "本應用可以將您的 Android 或 iOS 裝置透過 Wi-Fi 或 USB 變成電腦的高品質麥克風",
     "quickStart": "快速入門指南",
     "step1Title": "1. 安裝桌面應用程式",
     "step1Desc": "在電腦上下載並安裝 MicYou 桌面應用程式",
@@ -669,6 +671,17 @@
     "uninstallConfirm": "確定移除 {name}？",
     "marketSearch": "搜尋外掛程式商店",
     "marketAll": "全部",
-    "marketContribute": "貢獻外掛程式"
+    "marketContribute": "貢獻外掛程式",
+    "saving": "儲存中…",
+    "importPreview": {
+      "title": "安裝外掛程式？",
+      "name": "名稱",
+      "version": "版本",
+      "author": "作者",
+      "license": "授權",
+      "runtime": "類型",
+      "capabilities": "請求的能力",
+      "none": "（無）"
+    }
   }
 }

@@ -57,29 +57,31 @@ enum class PermissionType(val labelKey: String, val descKey: String, val isRequi
 /** Captured at app startup, never modified by setAppLocale. */
 private val originalSystemLocale: JavaLocale = JavaLocale.getDefault()
 
-fun setAppLocale(languageCode: String) {
-    val locale = if (languageCode == "system") {
-        originalSystemLocale
-    } else {
-        try {
-            // e.g. "zh-rHD" -> values-zh-rHD
-            val parts = if (languageCode.contains("-r")) {
-                languageCode.split("-r", limit = 2)
-            } else if (languageCode.contains("-")) {
-                languageCode.split("-", limit = 2)
-            } else {
-                null
-            }
-            if (parts != null && parts.size == 2) {
-                JavaLocale.Builder().setLanguage(parts[0]).setRegion(parts[1]).build()
-            } else {
-                JavaLocale.Builder().setLanguage(languageCode).build()
-            }
-        } catch (e: Exception) {
-            Logger.e("Localization", "Failed to parse locale: $languageCode", e)
-            originalSystemLocale
+/** Locale for an [AppLanguage.code]; "system" is the locale the app started with. */
+fun appLocale(languageCode: String): JavaLocale {
+    if (languageCode == "system") return originalSystemLocale
+    return try {
+        // e.g. "zh-rHD" -> values-zh-rHD
+        val parts = if (languageCode.contains("-r")) {
+            languageCode.split("-r", limit = 2)
+        } else if (languageCode.contains("-")) {
+            languageCode.split("-", limit = 2)
+        } else {
+            null
         }
+        if (parts != null && parts.size == 2) {
+            JavaLocale.Builder().setLanguage(parts[0]).setRegion(parts[1]).build()
+        } else {
+            JavaLocale.Builder().setLanguage(languageCode).build()
+        }
+    } catch (e: Exception) {
+        Logger.e("Localization", "Failed to parse locale: $languageCode", e)
+        originalSystemLocale
     }
+}
+
+fun setAppLocale(languageCode: String) {
+    val locale = appLocale(languageCode)
     JavaLocale.setDefault(locale)
     ContextHelper.setLocale(locale)
 }

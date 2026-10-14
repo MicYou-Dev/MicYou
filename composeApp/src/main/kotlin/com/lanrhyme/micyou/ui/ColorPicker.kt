@@ -110,7 +110,7 @@ fun HsvColorPickerDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "选择颜色",
+                    stringResource(R.string.colorPickerTitle),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )

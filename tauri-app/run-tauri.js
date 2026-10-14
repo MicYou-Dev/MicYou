@@ -19,19 +19,7 @@ if (process.argv.includes('dev')) {
   } catch {}
 }
 
-const args = process.argv.slice(2);
-
-// macOS: build a universal binary by default so a single download runs on both
-// Apple Silicon and Intel. An explicit --target still wins, and `dev` always
-// builds for the host only.
-if (process.platform === 'darwin' && args.includes('build')) {
-const hasTarget = args.some(
-(arg) => arg === '--target' || arg === '-t' || arg.startsWith('--target='),
-);
-if (!hasTarget) args.push('--target', 'universal-apple-darwin');
-}
-
-const result = spawnSync(process.execPath, [cli, ...args], {
+const result = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], {
   cwd: appDir,
   env,
   stdio: 'inherit',

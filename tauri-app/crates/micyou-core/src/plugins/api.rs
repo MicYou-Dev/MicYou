@@ -195,11 +195,7 @@ impl HostApi for PluginHostApi {
 
         let stats = &server.network_stats;
         let channels = stats.channels.load(Ordering::Relaxed);
-        let queued_ms = if channels > 0 {
-            (server.audio_output.queued_samples() as f64 / channels as f64) / 48.0
-        } else {
-            0.0
-        };
+        let queued_ms = server.audio_output.queued_ms();
         AudioStateSnapshot {
             streaming: is_server_running && (control_connected || audio_active || web_connected),
             sample_rate: stats.sample_rate.load(Ordering::Relaxed),

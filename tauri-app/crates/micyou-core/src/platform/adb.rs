@@ -141,7 +141,14 @@ pub fn list_adb_devices() -> Result<Vec<AdbDevice>, String> {
 }
 
 pub fn enable_usb_mode(port: u16, device_serial: Option<&str>) -> Result<UsbModeResult, String> {
-    let adb = find_adb().ok_or("ADB not found in PATH or common locations")?;
+    // iPhones need no adb: the server's usbmux bridge reaches them once it runs.
+    let Some(adb) = find_adb() else {
+        return if super::usbmux::has_usb_device() {
+            Ok(UsbModeResult::Success)
+        } else {
+            Err("ADB not found in PATH or common locations".to_string())
+        };
+    };
 
     if let Some(serial) = device_serial {
         run_adb_reverse(&adb, port, Some(serial))?;
@@ -158,6 +165,7 @@ pub fn enable_usb_mode(port: u16, device_serial: Option<&str>) -> Result<UsbMode
     let devices = parse_adb_devices(&stdout);
 
     match devices.len() {
+        0 if super::usbmux::has_usb_device() => Ok(UsbModeResult::Success),
         0 => Ok(UsbModeResult::NoDevices),
         1 => {
             run_adb_reverse(&adb, port, Some(&devices[0].serial))?;

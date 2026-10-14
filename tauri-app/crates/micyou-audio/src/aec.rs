@@ -19,7 +19,6 @@
 pub enum AecFailure {
     InferenceFailed,
     ModelLoadFailed,
-    ModelMissing,
     PermissionDenied,
     PipeWireUnavailable,
     ReferenceLost,
@@ -38,7 +37,6 @@ impl AecFailure {
         match self {
             Self::InferenceFailed => "inference_failed",
             Self::ModelLoadFailed => "model_load_failed",
-            Self::ModelMissing => "model_missing",
             Self::PermissionDenied => "permission_denied",
             Self::PipeWireUnavailable => "pipewire_unavailable",
             Self::ReferenceLost => "reference_lost",
@@ -110,12 +108,20 @@ fn detect_reference_availability() -> AecAvailability {
     // the life of the process, so they belong here rather than in a runtime
     // failure that every new session would reset.
     if !crate::macos_tap::process_tap_available() {
-        AecAvailability::unsupported()
-    } else if !crate::macos_tap::bundle_declares_audio_capture() {
-        AecAvailability::permission_denied()
-    } else {
-        AecAvailability::ready()
+        // Without taps the capture falls back to a BlackHole virtual device.
+        // Whether that driver is installed can change while the app runs, so it
+        // stays a runtime `VirtualSourceMissing` failure the user can retry after
+        // installing it, instead of a verdict cached for the process lifetime.
+        return AecAvailability::ready();
     }
+    if !crate::macos_tap::bundle_declares_audio_capture() {
+        // A mis-packaged bundle gets silence from its taps forever, but BlackHole
+        // still works, so only report this when there is nothing to fall back to.
+        if !crate::loopback::blackhole_device_present() {
+            return AecAvailability::permission_denied();
+        }
+    }
+    AecAvailability::ready()
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -131,7 +137,6 @@ mod tests {
     fn failure_codes_remain_stable_for_frontends() {
         assert_eq!(AecFailure::InferenceFailed.as_str(), "inference_failed");
         assert_eq!(AecFailure::ModelLoadFailed.as_str(), "model_load_failed");
-        assert_eq!(AecFailure::ModelMissing.as_str(), "model_missing");
         assert_eq!(
             AecFailure::PipeWireUnavailable.as_str(),
             "pipewire_unavailable"
@@ -141,10 +146,7 @@ mod tests {
             AecFailure::VirtualSourceMissing.as_str(),
             "virtual_source_missing"
         );
-        assert_eq!(
-            AecFailure::PermissionDenied.as_str(),
-            "permission_denied"
-        );
+        assert_eq!(AecFailure::PermissionDenied.as_str(), "permission_denied");
         assert_eq!(AecFailure::UnsupportedOs.as_str(), "unsupported_os");
     }
 

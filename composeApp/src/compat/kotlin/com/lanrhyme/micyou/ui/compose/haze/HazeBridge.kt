@@ -30,10 +30,5 @@ fun Modifier.hazeEffect(state: HazeState, style: HazeStyle): Modifier =
 
 fun Modifier.hazeSource(state: HazeState): Modifier = this
 
-fun Modifier.haze(state: HazeState): Modifier = this
-
-fun Modifier.hazeChild(state: HazeState, style: HazeStyle): Modifier =
-    this.background(style.backgroundColor)
-
 @Composable
 fun rememberHazeState(): HazeState = remember { HazeState() }

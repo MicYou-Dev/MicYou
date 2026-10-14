@@ -10,7 +10,9 @@
       "connecting": "等待设备连接...",
       "starting": "服务启动中...",
       "ready": "准备就绪",
-      "streamingDesc": "已成功连接至 Android 设备",
+      "streamingDesc": "已成功连接至设备",
+      "streamingDescAndroid": "已成功连接至 Android 设备",
+      "streamingDescIos": "已成功连接至 iOS 设备",
       "connectingDesc": "正在监听端口 {port}",
       "startingDesc": "正在初始化音频服务，请稍候",
       "readyDesc": "点击开始以等待连接",
@@ -49,7 +51,6 @@
       "aecDisabled": "AEC 不可用，已自动停用",
       "aecDisabledInferenceFailed": "AEC 音频处理失败，已自动停用",
       "aecDisabledModelLoadFailed": "AEC AI 模型加载失败，已自动停用",
-      "aecDisabledModelMissing": "未找到 AEC AI 模型，已自动停用",
       "aecDisabledPermissionDenied": "未获录制系统音频的授权，AEC 已自动停用",
       "aecDisabledPipeWireUnavailable": "PipeWire 不可用，AEC 已自动停用",
       "aecDisabledReferenceLost": "AEC 音频参考流已中断，已自动停用",
@@ -285,7 +286,7 @@
       "copied": "已复制",
       "exportLog": "导出日志",
       "introTitle": "软件介绍",
-      "introText": "MicYou 是一款开源的麦克风工具，可以将您的 Android 设备变成电脑的高质量麦克风，支持 Wi-Fi 和 USB 连接，提供低延迟的音频传输体验"
+      "introText": "MicYou 是一款开源的麦克风工具，可以将您的 Android 或 iOS 设备变成电脑的高质量麦克风，支持 Wi-Fi 和 USB 连接，提供低延迟的音频传输体验"
     },
     "runMode": {
       "title": "运行模式",
@@ -562,6 +563,7 @@
       "checkAntivirus": "检查防病毒或安全软件设置",
       "checkUsbCable": "检查 USB 线缆连接",
       "enableUsbDebugging": "在 Android 开发者选项中启用 USB 调试",
+      "connectIosOverUsb": "iPhone 或 iPad：打开 MicYou，电脑选择「USB 数据线」后点击连接；Windows 还需要安装 iTunes",
       "runAdbCommand": "在电脑上运行此命令：{cmd}",
       "checkAdbInstalled": "确保电脑上已安装 ADB",
       "runAdbManually": "手动运行：{cmd}",
@@ -577,7 +579,7 @@
   },
   "onboarding": {
     "title": "欢迎使用 MicYou",
-    "desc": "本应用可以将您的 Android 设备通过 Wi-Fi 或 USB 变成电脑的高质量麦克风",
+    "desc": "本应用可以将您的 Android 或 iOS 设备通过 Wi-Fi 或 USB 变成电脑的高质量麦克风",
     "quickStart": "快速入门指南",
     "step1Title": "1. 安装桌面应用",
     "step1Desc": "在电脑上下载并安装 MicYou 桌面应用",
@@ -671,6 +673,17 @@
     "uninstallConfirm": "确定卸载 {name}？",
     "marketSearch": "搜索插件市场",
     "marketAll": "全部",
-    "marketContribute": "贡献插件"
+    "marketContribute": "贡献插件",
+    "saving": "保存中…",
+    "importPreview": {
+      "title": "安装插件？",
+      "name": "名称",
+      "version": "版本",
+      "author": "作者",
+      "license": "许可",
+      "runtime": "类型",
+      "capabilities": "请求的能力",
+      "none": "（无）"
+    }
   }
 }

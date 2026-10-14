@@ -1,0 +1,13 @@
+[package]
+name = "micyou-infer"
+description = "MicYou pure-Rust inference VM for statically compiled MCYI model blobs (PureVox6 / AEC7) — no C dependencies, no ONNX Runtime"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Zero runtime dependencies on purpose: this crate is the ort/onnxruntime
+# replacement and must stay dependency-free (std only) so the audio stack
+# links nothing but Rust.
+
+[dependencies]

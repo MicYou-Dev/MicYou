@@ -15,11 +15,12 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{OutputCallbackInfo, SampleFormat, StreamConfig};
-use ringbuf::{HeapRb, Producer};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use ringbuf::{HeapProd, HeapRb};
 use rubato::audioadapter::{Adapter, AdapterMut};
 use rubato::audioadapter_buffers::owned::InterleavedOwned;
 use rubato::{Async, FixedAsync, PolynomialDegree, Resampler};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 const BUFFER_HEADROOM_MS: usize = 300;
@@ -87,7 +88,7 @@ impl RubatoResampler {
                 }
             }
 
-            match self.resampler.process(&self.input_buffer, 0, None) {
+            match self.resampler.process(&self.input_buffer, None) {
                 Ok(output_buffer) => {
                     let out_frames = output_buffer.frames();
                     let expected_out_frames = (in_frames as f64
@@ -102,12 +103,30 @@ impl RubatoResampler {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Resample error: {}", e);
+                    log::warn!("Resample error: {}", e);
                     output.extend_from_slice(chunk_input);
                 }
             }
         }
     }
+}
+
+/// Name used to list, persist and match an output or input device.
+///
+/// cpal 0.18 dropped `Device::name()`. On ALSA its replacement, the
+/// description, is a long label shared by every PCM of a card, so the PCM name
+/// from the device id (`pipewire`, `hw:CARD=0,DEV=0`) is kept instead; it is
+/// what cpal 0.15 returned and what `server.json` stores. WASAPI and CoreAudio
+/// read the same property for the description as `name()` did.
+pub fn device_name(device: &cpal::Device) -> Option<String> {
+    use cpal::traits::DeviceTrait;
+    #[cfg(target_os = "linux")]
+    if let Ok(id) = device.id() {
+        if id.host() == cpal::HostId::Alsa {
+            return Some(id.id().to_string());
+        }
+    }
+    device.description().ok().map(|d| d.name().to_string())
 }
 
 /// Fast PRNG for TPDF dithering (xorshift32), returns [0, 1) range.
@@ -148,9 +167,23 @@ fn map_channels(input: &[f32], in_channels: usize, out_channels: usize, output: 
     }
 }
 
+/// Error callback shared by the output and monitor streams: it logs the first
+/// error only and raises `failed`, because cpal re-invokes it on every poll
+/// iteration while the device stays broken.
+fn stream_error_callback(
+    failed: Arc<AtomicBool>,
+    label: &'static str,
+) -> impl FnMut(cpal::Error) + Send + 'static {
+    move |err| {
+        if !failed.swap(true, Ordering::Relaxed) {
+            log::error!("[Audio] {label} stream error: {err}");
+        }
+    }
+}
+
 pub struct AudioOutputManager {
     stream: Option<cpal::Stream>,
-    producer: Option<Producer<f32, Arc<HeapRb<f32>>>>,
+    producer: Option<HeapProd<f32>>,
     resampler: Option<RubatoResampler>,
     device_sample_rate: u32,
     device_channels: usize,
@@ -163,7 +196,7 @@ pub struct AudioOutputManager {
     #[allow(dead_code)]
     monitor_stream: Option<cpal::Stream>,
     #[allow(dead_code)]
-    monitor_producer: Option<Producer<f32, Arc<HeapRb<f32>>>>,
+    monitor_producer: Option<HeapProd<f32>>,
     #[allow(dead_code)]
     monitor_resampler: Option<RubatoResampler>,
     #[allow(dead_code)]
@@ -181,6 +214,15 @@ pub struct AudioOutputManager {
     /// the output callbacks drain their rings and emit pure silence, so muting
     /// takes effect within one device callback period.
     muted: Arc<AtomicBool>,
+    /// Set by the stream error callbacks. cpal keeps invoking the callback
+    /// in a tight loop once a device is gone (ALSA POLLERR), so the callbacks
+    /// only flip this flag and log once; the owning thread drops the dead
+    /// stream via `take_stream_failure`.
+    stream_failed: Arc<AtomicBool>,
+    /// Bumped by every output data callback. A backend can stop calling back
+    /// without reporting an error (PipeWire dropping the ALSA stream leaves
+    /// cpal blocked in poll), so the owner watches this for stalls.
+    callback_ticks: Arc<AtomicU64>,
     /// Last observed value of `muted`, used to detect transitions on the
     /// device thread (e.g. to clear queued sound effects when muting).
     was_muted: bool,
@@ -223,6 +265,8 @@ impl AudioOutputManager {
             is_monitoring: false,
             mixer: crate::mixer::SoundMixer::new(),
             muted,
+            stream_failed: Arc::new(AtomicBool::new(false)),
+            callback_ticks: Arc::new(AtomicU64::new(0)),
             was_muted: false,
             #[cfg(target_os = "linux")]
             pw_loopback_child: None,
@@ -311,7 +355,7 @@ impl AudioOutputManager {
                 }
             };
 
-            self.monitor_device_sample_rate = config.sample_rate().0;
+            self.monitor_device_sample_rate = config.sample_rate();
             self.monitor_device_channels = config.channels() as usize;
 
             if self.monitor_device_sample_rate != 48000 {
@@ -334,8 +378,8 @@ impl AudioOutputManager {
 
             self.monitor_producer = Some(producer);
 
-            let stream_config: StreamConfig = config.clone().into();
-            let err_fn = |err| log::error!("[Audio] Error on monitor stream: {}", err);
+            let stream_config: StreamConfig = config.into();
+            let err_fn = stream_error_callback(self.stream_failed.clone(), "monitor");
 
             let stream = match config.sample_format() {
                 SampleFormat::F32 => {
@@ -343,13 +387,13 @@ impl AudioOutputManager {
                     let mut last_sample = 0.0f32;
                     let muted_flag = self.muted.clone();
                     device.build_output_stream(
-                        &stream_config,
+                        stream_config,
                         move |data: &mut [f32], _: &OutputCallbackInfo| {
                             if muted_flag.load(Ordering::Relaxed) {
                                 // Hard-muted: drop everything queued and emit pure
                                 // silence so muting takes effect within this
                                 // callback period.
-                                while consumer.pop().is_some() {}
+                                consumer.clear();
                                 for sample in data.iter_mut() {
                                     *sample = 0.0;
                                 }
@@ -358,7 +402,7 @@ impl AudioOutputManager {
                                 return;
                             }
                             for sample in data.iter_mut() {
-                                match consumer.pop() {
+                                match consumer.try_pop() {
                                     Some(s) => {
                                         *sample = s;
                                         last_sample = s;
@@ -382,13 +426,13 @@ impl AudioOutputManager {
                     let mut last_sample = 0.0f32;
                     let muted_flag = self.muted.clone();
                     device.build_output_stream(
-                        &stream_config,
+                        stream_config,
                         move |data: &mut [i16], _: &OutputCallbackInfo| {
                             if muted_flag.load(Ordering::Relaxed) {
                                 // Hard-muted: drop everything queued and emit pure
                                 // silence so muting takes effect within this
                                 // callback period.
-                                while consumer.pop().is_some() {}
+                                consumer.clear();
                                 for sample in data.iter_mut() {
                                     *sample = 0;
                                 }
@@ -397,7 +441,7 @@ impl AudioOutputManager {
                                 return;
                             }
                             for sample in data.iter_mut() {
-                                let f_sample = match consumer.pop() {
+                                let f_sample = match consumer.try_pop() {
                                     Some(s) => {
                                         underrun_counter.store(0, Ordering::Relaxed);
                                         last_sample = s;
@@ -461,7 +505,7 @@ impl AudioOutputManager {
             let mut matched_device = None;
             if let Ok(devices) = host.output_devices() {
                 for dev in devices {
-                    if let Ok(name) = dev.name() {
+                    if let Some(name) = device_name(&dev) {
                         if name == target {
                             matched_device = Some(dev);
                             break;
@@ -470,7 +514,7 @@ impl AudioOutputManager {
                 }
             }
             if matched_device.is_none() {
-                eprintln!(
+                log::warn!(
                     "Could not find exact device: {}, falling back to default.",
                     target
                 );
@@ -483,7 +527,7 @@ impl AudioOutputManager {
                 let mut cable_device = None;
                 if let Ok(devices) = host.output_devices() {
                     for dev in devices {
-                        if let Ok(name) = dev.name() {
+                        if let Some(name) = device_name(&dev) {
                             let lower = name.to_lowercase();
                             if lower.contains("cable input")
                                 || lower.contains("vb-audio")
@@ -505,7 +549,7 @@ impl AudioOutputManager {
                 let mut blackhole_device = None;
                 if let Ok(devices) = host.output_devices() {
                     for dev in devices {
-                        if let Ok(name) = dev.name() {
+                        if let Some(name) = device_name(&dev) {
                             if name.to_lowercase().contains("blackhole") {
                                 blackhole_device = Some(dev);
                                 break;
@@ -527,7 +571,7 @@ impl AudioOutputManager {
         let device = device.ok_or("No output device available")?;
 
         let config = device.default_output_config()?;
-        self.device_sample_rate = config.sample_rate().0;
+        self.device_sample_rate = config.sample_rate();
         self.device_channels = config.channels() as usize;
 
         if self.device_sample_rate != 48000 {
@@ -551,22 +595,25 @@ impl AudioOutputManager {
 
         self.producer = Some(producer);
 
-        let stream_config: StreamConfig = config.clone().into();
-        let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+        let stream_config: StreamConfig = config.into();
+        self.stream_failed.store(false, Ordering::Relaxed);
+        let err_fn = stream_error_callback(self.stream_failed.clone(), "output");
 
         let stream = match config.sample_format() {
             SampleFormat::F32 => {
                 let underrun_counter = Arc::new(AtomicU32::new(0));
                 let mut last_sample = 0.0f32;
                 let muted_flag = self.muted.clone();
+                let ticks = self.callback_ticks.clone();
                 device.build_output_stream(
-                    &stream_config,
+                    stream_config,
                     move |data: &mut [f32], _: &OutputCallbackInfo| {
+                        ticks.fetch_add(1, Ordering::Relaxed);
                         if muted_flag.load(Ordering::Relaxed) {
                             // Hard-muted: drop everything queued and emit pure
                             // silence so muting takes effect within this
                             // callback period.
-                            while consumer.pop().is_some() {}
+                            consumer.clear();
                             for sample in data.iter_mut() {
                                 *sample = 0.0;
                             }
@@ -575,7 +622,7 @@ impl AudioOutputManager {
                             return;
                         }
                         for sample in data.iter_mut() {
-                            match consumer.pop() {
+                            match consumer.try_pop() {
                                 Some(s) => {
                                     *sample = s;
                                     last_sample = s;
@@ -598,14 +645,16 @@ impl AudioOutputManager {
                 let underrun_counter = Arc::new(AtomicU32::new(0));
                 let mut last_sample = 0.0f32;
                 let muted_flag = self.muted.clone();
+                let ticks = self.callback_ticks.clone();
                 device.build_output_stream(
-                    &stream_config,
+                    stream_config,
                     move |data: &mut [i16], _: &OutputCallbackInfo| {
+                        ticks.fetch_add(1, Ordering::Relaxed);
                         if muted_flag.load(Ordering::Relaxed) {
                             // Hard-muted: drop everything queued and emit pure
                             // silence so muting takes effect within this
                             // callback period.
-                            while consumer.pop().is_some() {}
+                            consumer.clear();
                             for sample in data.iter_mut() {
                                 *sample = 0;
                             }
@@ -614,7 +663,7 @@ impl AudioOutputManager {
                             return;
                         }
                         for sample in data.iter_mut() {
-                            let f_sample = match consumer.pop() {
+                            let f_sample = match consumer.try_pop() {
                                 Some(s) => {
                                     underrun_counter.store(0, Ordering::Relaxed);
                                     last_sample = s;
@@ -654,6 +703,19 @@ impl AudioOutputManager {
     /// Whether the cpal output stream is currently open.
     pub fn is_open(&self) -> bool {
         self.stream.is_some()
+    }
+
+    /// Whether a stream reported an error since the last call. The caller is
+    /// expected to `close()` the manager, which stops cpal's error loop, and
+    /// reopen it later.
+    pub fn take_stream_failure(&self) -> bool {
+        self.stream_failed.swap(false, Ordering::Relaxed)
+    }
+
+    /// Number of output data callbacks so far; stops advancing when the
+    /// device stalls.
+    pub fn callback_ticks(&self) -> u64 {
+        self.callback_ticks.load(Ordering::Relaxed)
     }
 
     /// Close the output stream while keeping the instance alive so it can be
@@ -742,11 +804,18 @@ impl AudioOutputManager {
         self.mixer.add(samples, gain);
     }
 
-    pub fn queued_samples(&self) -> usize {
-        if let Some(producer) = &self.producer {
-            producer.len()
+    /// Milliseconds of audio queued in the output ring buffer, measured at
+    /// the device's own rate and channel count.
+    pub fn queued_ms(&self) -> f64 {
+        let Some(producer) = &self.producer else {
+            return 0.0;
+        };
+        let samples_per_ms =
+            self.device_sample_rate as f64 * self.device_channels.max(1) as f64 / 1000.0;
+        if samples_per_ms > 0.0 {
+            producer.occupied_len() as f64 / samples_per_ms
         } else {
-            0
+            0.0
         }
     }
 }

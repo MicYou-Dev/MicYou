@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "src-tauri",
   "crates/micyou-protocol",
+  "crates/micyou-infer",
   "crates/micyou-audio",
   "crates/micyou-plugin",
   "crates/micyou-plugin/fixtures/native",
@@ -15,7 +16,7 @@ members = [
 opus-decoder = { git = "https://github.com/tfr0305/Rusopus.git", branch = "master" }
 
 [workspace.package]
-version = "2.0.3"
+version = "2.1.1"
 authors = ["LanRhyme"]
 edition = "2021"
 license = "GPL-3.0-or-later"
@@ -23,11 +24,12 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 micyou-audio = { path = "crates/micyou-audio" }
 micyou-core = { path = "crates/micyou-core", default-features = false }
+micyou-infer = { path = "crates/micyou-infer" }
 micyou-plugin = { path = "crates/micyou-plugin" }
 micyou-protocol = { path = "crates/micyou-protocol" }
 
 clap = { version = "4", features = ["derive"] }
-cpal = "0.15.3"
+cpal = "0.18.2"
 libc = "0.2.186"
 log = "0.4.32"
 prost = "0.14.4"
@@ -38,7 +40,7 @@ serde_json = "1.0.150"
 tauri-winres = "0.3.6"
 tokio = "1.52.3"
 wat = "1.255.0"
-zip = "2.4.2"
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [workspace.metadata.tools]
 cargo-about = "0.9.1"

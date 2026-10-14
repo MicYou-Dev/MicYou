@@ -43,7 +43,7 @@ pub fn is_installed() -> bool {
     let host = cpal::default_host();
     if let Ok(devices) = host.output_devices() {
         for dev in devices {
-            if let Ok(name) = dev.name() {
+            if let Some(name) = micyou_audio::device_name(&dev) {
                 if is_vbcable_device(&name) {
                     return true;
                 }
@@ -52,7 +52,7 @@ pub fn is_installed() -> bool {
     }
     if let Ok(devices) = host.input_devices() {
         for dev in devices {
-            if let Ok(name) = dev.name() {
+            if let Some(name) = micyou_audio::device_name(&dev) {
                 if is_vbcable_device(&name) {
                     return true;
                 }

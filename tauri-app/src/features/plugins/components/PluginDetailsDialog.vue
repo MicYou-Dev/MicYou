@@ -3,7 +3,7 @@
     <Transition name="dialog" appear>
       <div
         v-if="plugin"
-        class="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none"
+        class="fixed inset-0 z-60 flex items-center justify-center p-4 pointer-events-none"
       >
         <div
           class="pointer-events-auto relative w-full max-w-lg max-h-[75vh] flex flex-col rounded-2xl border border-surface-variant/40 bg-surface shadow-2xl"
@@ -66,7 +66,7 @@
                     v-model="configJson"
                     rows="8"
                     spellcheck="false"
-                    class="w-full bg-surface-variant/20 rounded-lg p-2 text-xs font-mono text-on-surface outline-none focus:ring-1 focus:ring-primary/40"
+                    class="w-full bg-surface-variant/20 rounded-lg p-2 text-xs font-mono text-on-surface outline-hidden focus:ring-1 focus:ring-primary/40"
                     placeholder='{ "key": "value" }'
                   ></textarea>
                   <div class="flex justify-end mt-2">
@@ -101,18 +101,6 @@
   user-select: text !important;
   -webkit-user-select: text !important;
 }
-.dialog-enter-active {
-  transition: opacity 0.18s ease;
-}
-.dialog-enter-from {
-  opacity: 0;
-}
-.dialog-leave-active {
-  transition: opacity 0.12s ease;
-}
-.dialog-leave-to {
-  opacity: 0;
-}
 .tab-enter-active {
   transition:
     opacity 0.15s ease,
@@ -130,7 +118,7 @@ import { useI18n } from 'vue-i18n';
 import { X } from '@lucide/vue';
 import PluginConfigForm from './PluginConfigForm.vue';
 import { usePlugins } from '../composables/usePlugins';
-import type { PluginView } from '../composables/usePlugins';
+import type { PluginView } from '@/platform';
 
 const props = defineProps<{ plugin: PluginView | null; tab: 'config' | 'logs' }>();
 const emit = defineEmits<{ close: [] }>();

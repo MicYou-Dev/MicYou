@@ -93,8 +93,8 @@ import com.lanrhyme.micyou.ui.compose.haze.HazeState
 import com.lanrhyme.micyou.ui.background.rememberHazeState
 import com.lanrhyme.micyou.ui.compose.haze.HazeStyle
 import com.lanrhyme.micyou.ui.compose.haze.HazeTint
-import com.lanrhyme.micyou.ui.compose.haze.hazeChild
-import com.lanrhyme.micyou.ui.compose.haze.haze
+import com.lanrhyme.micyou.ui.compose.haze.hazeEffect
+import com.lanrhyme.micyou.ui.compose.haze.hazeSource
 import androidx.compose.ui.res.stringResource
 import com.lanrhyme.micyou.audio.AudioFormat
 import com.lanrhyme.micyou.audio.ChannelCount
@@ -167,7 +167,7 @@ fun MobileSettingsPage(
                     if (state.backgroundSettings.hasCustomBackground) Color.Transparent
                     else backgroundColor
                 )
-                .haze(state = topBarHazeState)
+                .hazeSource(state = topBarHazeState)
         ) {
         LazyColumn(
             modifier = Modifier
@@ -207,7 +207,7 @@ fun MobileSettingsPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .hazeChild(
+                .hazeEffect(
                     state = topBarHazeState,
                     style = HazeStyle(
                         backgroundColor = topBarBackgroundColor,

@@ -175,7 +175,7 @@ fn set_muted_respects_control_intercept_capability() {
     let table = abi::host_table_for(ctx_with_cap);
     let res = unsafe { (table.set_muted)(table.ctx, 1) };
     assert_eq!(res, mpl_result_t::MPL_OK);
-    assert_eq!(*host.muted_state.lock().unwrap(), true);
+    assert!(*host.muted_state.lock().unwrap());
 
     let ctx_no_cap = Arc::new(NativeHostCtx {
         host: host.clone(),
@@ -184,7 +184,7 @@ fn set_muted_respects_control_intercept_capability() {
     let table2 = abi::host_table_for(ctx_no_cap);
     let res2 = unsafe { (table2.set_muted)(table2.ctx, 0) };
     assert_eq!(res2, mpl_result_t::MPL_ERR_PERMISSION);
-    assert_eq!(*host.muted_state.lock().unwrap(), true);
+    assert!(*host.muted_state.lock().unwrap());
 
     unsafe { abi::release_host_ctx(table.ctx) };
     unsafe { abi::release_host_ctx(table2.ctx) };
@@ -234,7 +234,7 @@ fn monitoring_respects_capabilities() {
     // Set monitoring
     let res = unsafe { (table.set_monitoring)(table.ctx, 1) };
     assert_eq!(res, mpl_result_t::MPL_OK);
-    assert_eq!(*host.monitoring_state.lock().unwrap(), true);
+    assert!(*host.monitoring_state.lock().unwrap());
 
     // Get monitoring
     let mut out_enabled = 0u32;

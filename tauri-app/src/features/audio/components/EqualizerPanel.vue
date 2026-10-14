@@ -7,19 +7,7 @@
       </div>
       <div class="flex items-center gap-3">
         <span class="text-sm font-medium text-on-surface-variant">{{ $t('settings.equalizer.enable') }}</span>
-        <button
-          @click="config.enabled = !config.enabled"
-          class="group relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 active:scale-95"
-          :class="config.enabled ? 'border-primary bg-primary' : 'border-on-surface-variant bg-transparent hover:bg-on-surface-variant/10'"
-        >
-          <div class="relative flex items-center justify-center transition-transform duration-300 ease-out" :class="config.enabled ? 'translate-x-[26px]' : 'translate-x-[4px]'">
-            
-            <span
-              class="pointer-events-none block rounded-full shadow-sm ring-0 transition-transform duration-300 ease-out"
-              :class="config.enabled ? 'h-6 w-6 bg-on-primary' : 'h-4 w-4 bg-on-surface group-hover:scale-125'"
-            />
-          </div>
-        </button>
+        <MD3Switch v-model="config.enabled" />
       </div>
     </div>
 
@@ -27,7 +15,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :class="{ 'opacity-50 pointer-events-none': !config.enabled }">
       
       <!-- Presets -->
-      <div class="bg-surface-bright rounded-2xl p-4 shadow-sm">
+      <div class="bg-surface-bright rounded-2xl p-4 shadow-xs">
         <h4 class="text-sm font-bold text-on-surface mb-3">{{ $t('settings.equalizer.presets') }}</h4>
         <div class="relative">
           <Select :model-value="selectedPreset" @update:model-value="val => { selectedPreset = val as string; applyPreset(); }">
@@ -49,7 +37,7 @@
       </div>
 
       <!-- Pre-amp -->
-      <div class="bg-surface-bright rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+      <div class="bg-surface-bright rounded-2xl p-4 shadow-xs flex flex-col justify-center">
         <div class="flex justify-between items-center mb-2">
           <h4 class="text-sm font-bold text-on-surface">{{ $t('settings.equalizer.preAmp') }}</h4>
           <span class="text-xs font-mono font-medium text-primary">{{ config.preAmp > 0 ? '+' : '' }}{{ config.preAmp.toFixed(1) }} dB</span>
@@ -65,7 +53,7 @@
     </div>
 
     <!-- 10-Band EQ Panel -->
-    <div class="bg-surface-bright rounded-3xl p-6 shadow-sm flex-1 flex flex-col min-h-[320px] relative overflow-hidden" :class="{ 'opacity-50 pointer-events-none': !config.enabled }">
+    <div class="bg-surface-bright rounded-3xl p-6 shadow-xs flex-1 flex flex-col min-h-[320px] relative overflow-hidden" :class="{ 'opacity-50 pointer-events-none': !config.enabled }">
       
       <!-- Y-Axis Labels -->
       <div class="absolute left-3 top-12 bottom-12 flex flex-col justify-between text-[10px] text-on-surface-variant/60 font-mono pointer-events-none z-10">
@@ -136,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import MD3Switch from '@/shared/components/ui/switch/MD3Switch.vue';
 import MD3Slider from "@/shared/components/ui/slider/MD3Slider.vue"
 import { ref, computed } from 'vue';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';

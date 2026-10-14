@@ -171,6 +171,7 @@ export function generateErrorDetails(
         suggestions: [
           t('error.suggestion.checkUsbCable'),
           t('error.suggestion.enableUsbDebugging'),
+          t('error.suggestion.connectIosOverUsb'),
           ...(extractAdbCommand(originalMessage)
             ? [t('error.suggestion.runAdbCommand', { cmd: extractAdbCommand(originalMessage)! })]
             : []),
@@ -186,6 +187,10 @@ export function generateErrorDetails(
         message: t('error.adbCommandFailed.message'),
         suggestions: [
           t('error.suggestion.checkAdbInstalled'),
+          // Without adb only an iPhone can use USB mode, so point there too
+          ...(originalMessage.toLowerCase().includes('not found')
+            ? [t('error.suggestion.connectIosOverUsb')]
+            : []),
           ...(extractAdbCommand(originalMessage)
             ? [t('error.suggestion.runAdbManually', { cmd: extractAdbCommand(originalMessage)! })]
             : []),

@@ -26,7 +26,7 @@
 
     <!-- tools:overrideLibrary 必须放在 <uses-sdk> 元素上才能被 manifest merger 识别
          (AGP 8.x 严格要求此位置, 放在 <application> 上不生效) -->
-    <uses-sdk tools:overrideLibrary="dev.chrisbanes.haze,com.materialkolor,io.github.vinceglb.filekit.core,io.github.vinceglb.filekit.dialogs,io.github.vinceglb.filekit.dialogs.compose,androidx.compose.runtime.annotation,androidx.compose.runtime.retain,androidx.compose.runtime.saveable,androidx.compose.runtime.tracing,androidx.compose.ui.tooling.data,androidx.compose.ui.tooling.preview,androidx.compose.foundation.layout,androidx.compose.foundation,androidx.compose.ui,androidx.compose.material3,androidx.compose.material,androidx.compose.runtime,androidx.compose.animation,androidx.compose.ui.graphics,androidx.compose.ui.text,androidx.compose.ui.unit,androidx.compose.ui.util,androidx.compose.animation.core" />
+    <uses-sdk tools:overrideLibrary="dev.chrisbanes.haze,com.materialkolor,androidx.compose.runtime.annotation,androidx.compose.runtime.retain,androidx.compose.runtime.saveable,androidx.compose.runtime.tracing,androidx.compose.ui.tooling.data,androidx.compose.ui.tooling.preview,androidx.compose.foundation.layout,androidx.compose.foundation,androidx.compose.ui,androidx.compose.material3,androidx.compose.material,androidx.compose.runtime,androidx.compose.animation,androidx.compose.ui.graphics,androidx.compose.ui.text,androidx.compose.ui.unit,androidx.compose.ui.util,androidx.compose.animation.core" />
 
     <application
         android:name=".MicYouApplication"
@@ -53,9 +53,6 @@
             android:foregroundServiceType="microphone|mediaPlayback"
             tools:targetApi="q" />
 
-        <receiver
-            android:name=".service.RestartReceiver"
-            android:exported="false" />
 
         <!-- TileService 需要 API 24+，在低版本设备上不会被使用 -->
         <service

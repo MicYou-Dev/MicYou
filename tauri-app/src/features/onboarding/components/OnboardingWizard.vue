@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { X, CheckCircle2, Download, Loader2, ArrowRight } from '@lucide/vue';
+import { command, onEvent, openUrl } from '@/platform';
+import { useListeners } from '@/shared/lib/listeners';
+import { isWindows } from '@/shared/lib/os';
 
 const { t } = useI18n();
 
@@ -15,28 +15,23 @@ defineProps<{
 }>();
 
 const step = ref(1);
-const isWindows = ref(false);
 const vbcableInstalled = ref(false);
 const installing = ref(false);
 const installProgress = ref('');
 const installError = ref('');
 const installSuccess = ref(false);
 
-let unlistenProgress: UnlistenFn | null = null;
+const track = useListeners();
 
 const TOTAL_STEPS_WINDOWS = 4;
 const TOTAL_STEPS_OTHER = 2;
 
-const totalSteps = ref(TOTAL_STEPS_OTHER);
+const totalSteps = isWindows ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
 
 onMounted(async () => {
-  const platform = navigator.platform.toLowerCase();
-  isWindows.value = platform.includes('win');
-  totalSteps.value = isWindows.value ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
-
-  if (isWindows.value) {
+  if (isWindows) {
     try {
-      vbcableInstalled.value = await invoke<boolean>('check_vbcable');
+      vbcableInstalled.value = await command('check_vbcable');
       if (vbcableInstalled.value) {
         step.value = 4;
       }
@@ -45,23 +40,19 @@ onMounted(async () => {
     }
   }
 
-  unlistenProgress = await listen<string>('vbcable-install-progress', (event) => {
-    installProgress.value = event.payload;
-  });
-});
-
-onUnmounted(() => {
-  if (unlistenProgress) unlistenProgress();
+  await track(onEvent('vbcable-install-progress', (payload) => {
+    installProgress.value = payload;
+  }));
 });
 
 function nextStep() {
-  if (step.value < totalSteps.value) {
+  if (step.value < totalSteps) {
     step.value++;
   }
 }
 
 function skip() {
-  if (isWindows.value && step.value === 1) {
+  if (isWindows && step.value === 1) {
     step.value = 4;
   } else {
     complete();
@@ -79,7 +70,7 @@ async function installVBCable() {
   installProgress.value = '';
 
   try {
-    const result = await invoke<{ success: boolean; error_type?: string; message?: string }>('install_vbcable');
+    const result = await command('install_vbcable');
 
     if (result.success) {
       installSuccess.value = true;
@@ -109,7 +100,7 @@ async function openTextGuide() {
 </script>
 
 <template>
-  <div v-if="visible" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div v-if="visible" class="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs">
     <div class="bg-surface rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
       <!-- Header -->
       <div class="flex items-center justify-between p-5 border-b border-outline-variant/20">

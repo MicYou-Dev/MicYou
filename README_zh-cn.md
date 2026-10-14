@@ -22,13 +22,13 @@
 
   MicYou 可将手机变为高质量的 PC 麦克风。
 
-  原生 Android 客户端 · Windows / Linux / macOS 桌面端 · Wi-Fi / USB / Web
+  原生 Android 与 iOS 客户端 · Windows / Linux / macOS 桌面端 · Wi-Fi / USB / Web
 
 </div>
 
 ## 主要功能
 
-- Android 客户端支持 Wi-Fi 和 USB (ADB)；Web 模式可通过二维码直接连接手机浏览器，无需安装客户端
+- Android 客户端支持 Wi-Fi 和 USB (ADB)，[iOS 客户端](https://github.com/MicYou-Dev/MicYou-iOS)支持 Wi-Fi 和 USB；Web 模式可通过二维码直接连接手机浏览器，无需安装客户端
 - 桌面端支持 Windows、Linux 和 macOS，并提供完整 GUI、低占用 CLI 与交互式 TUI 仪表盘
 - 可配置包含 AI 与传统降噪、声学回声消除 (AEC)、去混响、均衡器、放大、自动增益控制 (AGC) 和语音活动检测 (VAD) 的音频处理链
 - 可实时查看音量、比特率、延迟、抖动、丢包率和缓冲区状态，并随时静音或监听输入音频
@@ -51,12 +51,12 @@
 
 ## 使用指南
 
-1. 从 [GitHub Releases](https://github.com/MicYou-Dev/MicYou/releases) 下载 Android APK 和对应操作系统的桌面端安装包
+1. 从 [GitHub Releases](https://github.com/MicYou-Dev/MicYou/releases) 下载对应操作系统的桌面端安装包和 Android APK；iPhone 或 iPad 请从 [MicYou for iOS](https://github.com/MicYou-Dev/MicYou-iOS/releases/latest) 下载 IPA，并参照[在 iOS 上安装](https://micyou.top/docs/how-to-install-in-ios)侧载
 2. 按照[快速开始指南](https://micyou.top/docs/quick-start)为电脑配置虚拟麦克风
 3. 选择连接方式：
-   - Wi-Fi：确保手机与电脑处于同一网络，并在两端选择 Wi-Fi 模式
-   - USB：启用 USB 调试，通过数据线连接手机，并在两端选择 USB 模式
-   - Web：在桌面端选择 Web 模式，再用手机浏览器扫描二维码，无需安装 Android 客户端
+   - Wi-Fi：确保手机与电脑处于同一网络，并在桌面端选择 Wi-Fi 模式；Android 客户端同样选择 Wi-Fi 模式，iOS 客户端会自动搜索到电脑，也可以手动输入 IP 地址
+   - USB：通过数据线连接手机，并在桌面端选择 USB 模式；Android 需启用 USB 调试并在客户端选择 USB 模式，iOS 在客户端选择“USB 数据线”（Windows 需安装 iTunes）
+   - Web：在桌面端选择 Web 模式，再用手机浏览器扫描二维码，无需安装客户端
 4. 启动音频传输，然后在通话、游戏、直播或录音软件中选择已配置的虚拟麦克风
 
 更多平台安装步骤与故障排查，请查阅 [MicYou 官方文档](https://micyou.top/docs/quick-start)。
@@ -64,6 +64,7 @@
 ## 技术栈
 
 - Android：Kotlin、Jetpack Compose、Material 3
+- iOS：Swift、SwiftUI（[独立仓库](https://github.com/MicYou-Dev/MicYou-iOS)）
 - 桌面端：Tauri 2、Rust、Vue 3、Vite、Tailwind CSS
 - 协议与音频：由 Rust 后端与共享 Crate 实现传输、缓冲、DSP 和虚拟音频设备集成
 
@@ -80,11 +81,11 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Star History
 
-<a href="https://star-history.dera.page/#MicYou-Dev/MicYou&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=micyou-dev%2Fmicyou&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&legend=top-left" />
  </picture>
 </a>
 

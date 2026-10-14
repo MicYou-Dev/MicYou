@@ -17,7 +17,7 @@
 
 use micyou_core::server::ServerState;
 use tauri::window::{Effect, EffectsBuilder};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "macos")]
 #[allow(unexpected_cfgs)]
@@ -230,11 +230,16 @@ pub const SETTINGS_WINDOW_LABEL: &str = "settings";
 
 /// Opens the settings window, or focuses it when it is already open. It uses
 /// the same frameless, transparent chrome as the main window.
+///
+/// Async on purpose: sync commands run on the main thread, and building a
+/// webview window there deadlocks on Windows (tauri#4121).
 #[tauri::command]
-pub fn open_settings_window(app: AppHandle, title: String) -> Result<(), String> {
+pub async fn open_settings_window(app: AppHandle, title: String) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
         let _ = win.unminimize();
         win.show().map_err(|e| e.to_string())?;
+        // Closing only hid the window; its page animates back in on this.
+        let _ = win.emit_to(SETTINGS_WINDOW_LABEL, "settings-window-shown", ());
         return win.set_focus().map_err(|e| e.to_string());
     }
 
@@ -253,8 +258,13 @@ pub fn open_settings_window(app: AppHandle, title: String) -> Result<(), String>
     .center()
     .build()
     .map_err(|e| e.to_string())?;
-    apply_macos_vibrancy(&win);
-    apply_rounded_corners(&win);
+    // AppKit calls must run on the main thread.
+    let styled = win.clone();
+    app.run_on_main_thread(move || {
+        apply_macos_vibrancy(&styled);
+        apply_rounded_corners(&styled);
+    })
+    .map_err(|e| e.to_string())?;
 
     // The settings page streams the spectrum while it is visible; a closed
     // window cannot turn that off itself.

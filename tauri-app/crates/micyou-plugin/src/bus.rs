@@ -92,12 +92,13 @@ impl PluginSyncTransport for NullTransport {
 }
 
 type TopicHandler = dyn Fn(&PluginMessage) + Send + Sync;
+type LocalDispatcher = dyn Fn(&PluginMessage) -> PluginResult<()> + Send + Sync;
 
 /// The host-side message bus.
 pub struct PluginBus {
     transport: Arc<dyn PluginSyncTransport>,
     /// Routes incoming messages to local plugins (set by the host).
-    local_dispatcher: Arc<dyn Fn(&PluginMessage) -> PluginResult<()> + Send + Sync>,
+    local_dispatcher: Arc<LocalDispatcher>,
     subscriptions: RwLock<HashMap<String, Vec<Arc<TopicHandler>>>>,
     pending: Mutex<HashMap<u64, std::sync::mpsc::Sender<PluginResult<Vec<u8>>>>>,
     next_correlation: AtomicU64,
@@ -106,7 +107,7 @@ pub struct PluginBus {
 impl PluginBus {
     pub fn new(
         transport: Arc<dyn PluginSyncTransport>,
-        local_dispatcher: Arc<dyn Fn(&PluginMessage) -> PluginResult<()> + Send + Sync>,
+        local_dispatcher: Arc<LocalDispatcher>,
     ) -> Self {
         Self {
             transport,
@@ -345,7 +346,7 @@ mod tests {
         }
     }
 
-    fn noop_dispatcher() -> Arc<dyn Fn(&PluginMessage) -> PluginResult<()> + Send + Sync> {
+    fn noop_dispatcher() -> Arc<LocalDispatcher> {
         Arc::new(|_| Ok(()))
     }
 

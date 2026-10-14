@@ -1,74 +1,35 @@
 import { ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import {
+  command,
+  pickFile,
+  type PluginPreview,
+  type PluginSyncStatus,
+  type PluginUpdate,
+  type PluginView,
+} from '@/platform';
+import { i18n } from '@/i18n';
 
-export interface PluginDependency {
-  id: string;
-  version?: string;
-  optional?: boolean;
-}
-
-export interface PluginUpdate {
-  id: string;
-  currentVersion: string;
-  latestVersion: string;
-  updateUrl: string;
-}
-
-export interface PluginPreview {
-  id: string;
-  name: string;
-  version: string;
-  author?: string | null;
-  description?: string | null;
-  runtime: string;
-  kind: string;
-  capabilities: string[];
-  license?: string | null;
-  homepage?: string | null;
-}
-
-export interface PluginView {
-  id: string;
-  name: string;
-  version: string;
-  author?: string | null;
-  description?: string | null;
-  runtime: string; // native | wasm
-  kind: string; // dsp | utility | ui | bridge
-  platforms: string[];
-  capabilities: string[];
-  ui?: {
-    route: string;
-    label?: string;
-    entry?: string | null;
-    panels?: Array<{ id: string; label: string; entry: string; sidebar?: boolean }>;
-  } | null;
-  enabled: boolean;
-  loaded: boolean;
-  dspNode: boolean;
-  error?: string | null;
-  nameI18n?: Record<string, string>;
-  descriptionI18n?: Record<string, string>;
-  dependencies?: PluginDependency[];
-  configSchema?: {
-    fields: Array<{
-      key: string;
-      fieldType: string;
-      label?: string | null;
-      description?: string | null;
-      default?: unknown;
-      min?: number;
-      max?: number;
-      step?: number;
-      options?: Array<{ value: string; label?: string | null }>;
-    }>;
-  };
-}
-
-export interface PluginSyncStatus {
-  deviceConnected: boolean;
-  transportReady: boolean;
+/** Permission preview shown before a .zip plugin is installed. */
+function formatImportPreview(preview: PluginPreview): string {
+  const t = i18n.global.t;
+  const field = (key: string, value: string) => `${t(`plugins.importPreview.${key}`)}: ${value}`;
+  const lines = [
+    t('plugins.importPreview.title'),
+    '',
+    field('name', `${preview.name} (${preview.id})`),
+    field('version', preview.version),
+    ...(preview.author ? [field('author', preview.author)] : []),
+    ...(preview.license ? [field('license', preview.license)] : []),
+    field('runtime', preview.runtime),
+    '',
+    `${t('plugins.importPreview.capabilities')}:`,
+    ...(preview.capabilities.length
+      ? preview.capabilities.map((c) => `  · ${c}`)
+      : [`  ${t('plugins.importPreview.none')}`]),
+    '',
+    t('plugins.marketConfirmText'),
+  ];
+  return lines.join('\n');
 }
 
 // 模块级单例：设置对话框与（曾经的）独立对话框共享同一份状态
@@ -83,8 +44,8 @@ export function usePlugins() {
     loading.value = true;
     error.value = null;
     try {
-      plugins.value = await invoke<PluginView[]>('list_plugins');
-      syncStatus.value = await invoke<PluginSyncStatus>('get_plugin_sync_status');
+      plugins.value = await command('list_plugins');
+      syncStatus.value = await command('get_plugin_sync_status');
     } catch (e) {
       error.value = String(e);
     } finally {
@@ -98,7 +59,7 @@ export function usePlugins() {
     const stale = plugins.value.find((v) => v.id === plugin.id);
     if (stale) stale.error = null;
     try {
-      await invoke('set_plugin_enabled', { id: plugin.id, enabled: !plugin.enabled });
+      await command('set_plugin_enabled', { id: plugin.id, enabled: !plugin.enabled });
       await refresh();
     } catch (e) {
       error.value = String(e);
@@ -115,7 +76,7 @@ export function usePlugins() {
     busyId.value = plugin.id;
     error.value = null;
     try {
-      await invoke('uninstall_plugin', { id: plugin.id });
+      await command('uninstall_plugin', { id: plugin.id });
       await refresh();
     } catch (e) {
       error.value = String(e);
@@ -127,7 +88,7 @@ export function usePlugins() {
   async function saveConfig(plugin: PluginView | string, key: string, value: unknown) {
     try {
       const pluginId = typeof plugin === 'string' ? plugin : plugin.id;
-      await invoke('set_plugin_config', { id: pluginId, key, value });
+      await command('set_plugin_config', { id: pluginId, key, value });
       return true;
     } catch (e) {
       error.value = String(e);
@@ -138,7 +99,7 @@ export function usePlugins() {
   async function getConfig(plugin: PluginView | string): Promise<Record<string, unknown>> {
     try {
       const pluginId = typeof plugin === 'string' ? plugin : plugin.id;
-      const v = await invoke<Record<string, unknown>>('get_plugin_config', { id: pluginId });
+      const v = await command('get_plugin_config', { id: pluginId });
       return v ?? {};
     } catch {
       return {};
@@ -147,7 +108,7 @@ export function usePlugins() {
 
   async function logs(plugin: PluginView): Promise<string[]> {
     try {
-      return await invoke<string[]>('get_plugin_logs', { id: plugin.id });
+      return await command('get_plugin_logs', { id: plugin.id });
     } catch {
       return [];
     }
@@ -157,7 +118,7 @@ export function usePlugins() {
   async function trigger(plugin: PluginView, action: string, payload?: string) {
     error.value = null;
     try {
-      await invoke('plugin_trigger', { pluginId: plugin.id, action, payload: payload ?? null });
+      await command('plugin_trigger', { pluginId: plugin.id, action, payload: payload ?? null });
       return true;
     } catch (e) {
       error.value = String(e);
@@ -168,7 +129,7 @@ export function usePlugins() {
   /** 打开系统文件管理器显示插件目录（目录由后端 open_plugins_dir 命令直接打开） */
   async function openDir(): Promise<boolean> {
     try {
-      await invoke('open_plugins_dir');
+      await command('open_plugins_dir');
       return true;
     } catch (e) {
       error.value = String(e);
@@ -180,12 +141,12 @@ export function usePlugins() {
   // Peek a plugin zip's manifest so the UI can show a permission prompt
   // before the plugin is actually installed
   async function previewPlugin(path: string): Promise<PluginPreview> {
-    return await invoke('preview_plugin_zip', { zipPath: path });
+    return await command('preview_plugin_zip', { zipPath: path });
   }
 
   async function checkUpdates(): Promise<PluginUpdate[]> {
     try {
-      return await invoke<PluginUpdate[]>('check_plugin_updates');
+      return await command('check_plugin_updates');
     } catch {
       return [];
     }
@@ -195,7 +156,7 @@ export function usePlugins() {
     try {
       busyId.value = id + ':update';
       error.value = null;
-      await invoke('update_plugin', { id });
+      await command('update_plugin', { id });
       await refresh();
       return true;
     } catch (e) {
@@ -208,13 +169,9 @@ export function usePlugins() {
 
   async function importPlugin(): Promise<boolean> {
     try {
-      const picked = await open({
-        multiple: false,
-        directory: false,
-        filters: [{ name: 'MicYou plugin', extensions: ['zip'] }],
-      });
+      const picked = await pickFile([{ name: 'MicYou plugin', extensions: ['zip'] }]);
       if (!picked) return false; // 用户取消
-      return await importFromPath(String(picked));
+      return await importFromPath(picked);
     } catch (e) {
       error.value = String(e);
       return false;
@@ -228,14 +185,12 @@ export function usePlugins() {
       if (isZip) {
         // 权限预览：名称/作者/许可/请求的能力
         const preview: PluginPreview = await previewPlugin(path);
-        const confirmed = window.confirm(
-          `安装插件？\n\n名称: ${preview.name} (${preview.id})\n版本: ${preview.version}${preview.author ? `\n作者: ${preview.author}` : ''}${preview.license ? `\n许可: ${preview.license}` : ''}\n类型: ${preview.runtime}\n\n请求的能力:\n${preview.capabilities.length ? preview.capabilities.map((c: string) => `  · ${c}`).join('\n') : '  (无)'}\n\n⚠ 请确认来源可信后安装（插件可获得所声明的能力）`,
-        );
+        const confirmed = window.confirm(formatImportPreview(preview));
         if (!confirmed) return false;
       }
       busyId.value = 'import';
       error.value = null;
-      await invoke('import_plugin', { source: path });
+      await command('import_plugin', { source: path });
       await refresh();
       return true;
     } catch (e) {

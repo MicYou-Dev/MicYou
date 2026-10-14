@@ -237,6 +237,7 @@ impl TuiApp {
                     self.log(format!("[warn] AEC disabled: {reason}"));
                 }
             }
+            Event::Log(line) => self.log(line),
         }
     }
 
@@ -1571,5 +1572,15 @@ mod tests {
 
         assert!(app.settings.aec_enabled);
         assert!(!app.aec_runtime_available);
+    }
+
+    #[test]
+    fn log_records_land_on_the_logs_page() {
+        let mut app = TuiApp::new(AudioDspSettings::default(), 8554, "wifi".to_string());
+        app.on_event(Event::Log("[warn] [Audio] Output stream failed".to_string()));
+        assert_eq!(
+            app.logs.back().map(String::as_str),
+            Some("[warn] [Audio] Output stream failed")
+        );
     }
 }

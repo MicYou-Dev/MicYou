@@ -21,13 +21,13 @@
 
   MicYou turns your phone into a high-quality microphone for your PC.
 
-  Native Android client · Windows / Linux / macOS desktop server · Wi-Fi / USB / Web
+  Native Android and iOS clients · Windows / Linux / macOS desktop server · Wi-Fi / USB / Web
 
 </div>
 
 ## Features
 
-- Stream from the Android app over Wi-Fi or USB (ADB), or use Web mode directly from a mobile browser by scanning a QR code.
+- Stream from the Android app over Wi-Fi or USB (ADB), from the [iOS app](https://github.com/MicYou-Dev/MicYou-iOS) over Wi-Fi or USB, or use Web mode directly from a mobile browser by scanning a QR code.
 - Run the desktop server on Windows, Linux, and macOS with a full GUI, a low-overhead CLI, or an interactive TUI dashboard.
 - Configure a processing pipeline with AI and traditional noise suppression, acoustic echo cancellation (AEC), dereverberation, equalizer, amplification, automatic gain control (AGC), and voice activity detection (VAD).
 - Inspect audio level, bitrate, latency, jitter, packet loss, and buffer status; mute or monitor incoming audio at any time.
@@ -52,12 +52,12 @@
 
 ## Getting Started
 
-1. Download the Android APK and the desktop package for your operating system from [GitHub Releases](https://github.com/MicYou-Dev/MicYou/releases).
+1. Download the desktop package for your operating system and the Android APK from [GitHub Releases](https://github.com/MicYou-Dev/MicYou/releases). On iPhone or iPad, get the IPA from [MicYou for iOS](https://github.com/MicYou-Dev/MicYou-iOS/releases/latest) and sideload it by following [Install on iOS](https://micyou.top/en/docs/how-to-install-in-ios).
 2. Set up a virtual microphone for your platform by following the [Quick Start guide](https://micyou.top/en/docs/quick-start).
 3. Choose a connection method:
-   - Wi-Fi: Keep the phone and PC on the same network, then select Wi-Fi on both apps.
-   - USB: Enable USB debugging, connect the phone with a data cable, then select USB on both apps.
-   - Web: Select Web on the desktop and scan the QR code with a mobile browser—no Android app is required.
+   - Wi-Fi: Keep the phone and PC on the same network, then select Wi-Fi on the desktop. The Android app connects after you select Wi-Fi; the iOS app finds the computer automatically, or you can enter its IP address.
+   - USB: Connect the phone with a data cable and select USB on the desktop. On Android, enable USB debugging and select USB in the app; on iOS, choose USB Cable in the app (Windows needs iTunes installed).
+   - Web: Select Web on the desktop and scan the QR code with a mobile browser—no app is required.
 4. Start streaming, then select the configured virtual microphone in your call, game, streaming, or recording app.
 
 For platform-specific installation steps and troubleshooting, visit the [MicYou documentation](https://micyou.top/en/docs/quick-start).
@@ -65,6 +65,7 @@ For platform-specific installation steps and troubleshooting, visit the [MicYou 
 ## Technology
 
 - Android: Kotlin, Jetpack Compose, Material 3
+- iOS: Swift, SwiftUI ([separate repository](https://github.com/MicYou-Dev/MicYou-iOS))
 - Desktop: Tauri 2, Rust, Vue 3, Vite, Tailwind CSS
 - Protocol and audio: A Rust backend and shared crates for transport, buffering, DSP, and virtual audio device integration
 
@@ -82,11 +83,11 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Star History
 
-<a href="https://star-history.dera.page/#MicYou-Dev/MicYou&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=micyou-dev%2Fmicyou&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=MicYou-Dev/MicYou&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=micyou-dev/micyou&type=date&legend=top-left" />
  </picture>
 </a>
 

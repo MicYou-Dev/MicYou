@@ -156,7 +156,7 @@ fn list_installed() -> Result<(), String> {
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
                 .and_then(|v| {
                     // plugin-state.json 顶层键即插件 id
-                    v.get(&dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string())
+                    v.get(dir.file_name().and_then(|n| n.to_str()).unwrap_or(""))
                         .and_then(|p| p.get("enabled").cloned())
                         .and_then(|e| e.as_bool())
                 })
@@ -182,7 +182,7 @@ fn list_installed() -> Result<(), String> {
         println!("(未安装插件)");
         return Ok(());
     }
-    println!("{:<45} {:<10} {:<8} {}", "ID", "版本", "运行时", "状态");
+    println!("{:<45} {:<10} {:<8} 状态", "ID", "版本", "运行时");
     for (id, ver, rt, on) in rows {
         println!(
             "{:<45} {:<10} {:<8} {}",
@@ -802,8 +802,7 @@ fn create(
         let mut plugin_json = WASM_PLUGIN_JSON
             .replace("dev.micyou.example.myplugin", id)
             .replace("My Plugin", &display_name)
-            .replace("\"utility\"", kind_json)
-            .replace("\"entry\": \"main.wasm\"", "\"entry\": \"main.wasm\"");
+            .replace("\"utility\"", kind_json);
         if !capabilities.is_empty() {
             plugin_json = plugin_json.replacen("[]", &caps_json, 1);
         }
@@ -819,7 +818,7 @@ fn create(
         let build = std::process::Command::new("cargo")
             .arg("build")
             .arg("--release")
-            .current_dir(&dir)
+            .current_dir(dir)
             .output();
         match build {
             Ok(out) if out.status.success() => {

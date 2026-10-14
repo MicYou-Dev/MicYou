@@ -22,9 +22,11 @@ use micyou_core::settings::PipeWireStatus;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
+// Device enumeration can take seconds on Windows (Bluetooth endpoints), so it
+// runs off the main thread, where sync commands would freeze the UI.
 #[tauri::command]
-pub fn get_audio_devices() -> Vec<String> {
-    micyou_core::settings::audio_devices()
+pub async fn get_audio_devices() -> Result<Vec<String>, String> {
+    super::blocking(|| Ok(micyou_core::settings::audio_devices())).await
 }
 
 #[tauri::command]
@@ -56,13 +58,6 @@ pub fn get_audio_settings(state: State<'_, ServerState>) -> AudioDspSettings {
     state.current_dsp_settings()
 }
 
-/// Whether the shared server.json exists (the GUI migrates older
-/// localStorage values on first run otherwise).
-#[tauri::command]
-pub fn server_prefs_exists() -> bool {
-    config::server_prefs_path().exists()
-}
-
 #[tauri::command]
 pub fn get_server_prefs() -> ServerPrefs {
     config::load_server_prefs()
@@ -80,8 +75,8 @@ pub fn check_pipewire() -> PipeWireStatus {
 }
 
 #[tauri::command]
-pub fn check_vbcable() -> bool {
-    vbcable::is_installed()
+pub async fn check_vbcable() -> Result<bool, String> {
+    super::blocking(|| Ok(vbcable::is_installed())).await
 }
 
 #[cfg(feature = "vbcable")]

@@ -6,7 +6,7 @@
       @click="selectTheme(theme.id)"
       :disabled="disabled"
       class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 border-[1.5px] disabled:pointer-events-none disabled:opacity-40"
-      :class="modelValue === theme.id ? 'border-primary scale-110 shadow-md' : 'border-transparent hover:scale-110 shadow-sm'"
+      :class="modelValue === theme.id ? 'border-primary scale-110 shadow-md' : 'border-transparent hover:scale-110 shadow-xs'"
       :style="{ backgroundColor: theme.color }"
       :title="theme.name"
     >
@@ -18,7 +18,7 @@
       @click="$emit('open-custom')"
       :disabled="disabled"
       class="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 border-[1.5px] disabled:pointer-events-none disabled:opacity-40"
-      :class="modelValue === 'theme-custom' ? 'border-primary scale-110 shadow-md' : 'border-transparent hover:scale-110 shadow-sm'"
+      :class="modelValue === 'theme-custom' ? 'border-primary scale-110 shadow-md' : 'border-transparent hover:scale-110 shadow-xs'"
       :style="customStyle"
       title="Custom Color"
     >

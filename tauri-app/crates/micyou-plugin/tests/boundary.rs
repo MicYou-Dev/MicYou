@@ -283,7 +283,7 @@ fn bus_dispatch_from_multiple_threads_does_not_deadlock() {
             for i in 0..200 {
                 let msg =
                     PluginMessage::new("test", "dev.a", "topic", format!("{t}-{i}").into_bytes());
-                let _ = bus.handle_incoming(&msg);
+                bus.handle_incoming(&msg);
             }
         }));
     }

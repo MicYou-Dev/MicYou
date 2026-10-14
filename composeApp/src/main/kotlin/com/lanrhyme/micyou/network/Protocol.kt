@@ -101,7 +101,10 @@ data class MuteMessage(
 @Serializable
 data class ConnectMessage(
     @ProtoNumber(1)
-    val sessionId: Long = 0
+    val sessionId: Long = 0,
+    // 客户端平台，桌面端据此显示设备类型；默认值不会被编码，发送时须显式传入 CLIENT_PLATFORM
+    @ProtoNumber(2)
+    val platform: String = ""
 )
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -118,8 +121,15 @@ data class PongMessage(
     val timestamp: Long
 )
 
+// TCP handshake strings, matching HANDSHAKE_CLIENT_STR / HANDSHAKE_SERVER_STR in micyou-protocol
+const val HANDSHAKE_CLIENT = "MicYouCheck1"
+const val HANDSHAKE_SERVER = "MicYouCheck2"
 const val PACKET_MAGIC = 0x4D696359 // "MicY" in ASCII
 const val UDP_PACKET_MAGIC = 0x4D696355 // "MicU" in ASCII
+/** ConnectMessage.platform 取值，与 micyou-core 的 ClientPlatform 对应 */
+const val CLIENT_PLATFORM = "android"
+/** TCP 控制帧负载上限，与 micyou-core 的 MAX_CONTROL_PAYLOAD_LEN 一致 */
+const val MAX_CONTROL_PAYLOAD_SIZE = 1024 * 1024
 const val UDP_CUSTOM_HEADER_SIZE = 8
 const val UDP_MAX_DATAGRAM_SIZE = 1472
 // 为自定义头、嵌套 protobuf、64 位字段及 FEC 长度元数据预留最坏情况预算。

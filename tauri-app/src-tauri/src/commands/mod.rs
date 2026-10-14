@@ -23,7 +23,7 @@ pub mod plugins;
 pub mod server;
 pub mod theme;
 
-/// Run blocking core work (HTTP, file IO) off the main thread.
+/// Run blocking core work (HTTP, file IO, device enumeration) off the main thread.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {

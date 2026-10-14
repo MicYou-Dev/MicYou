@@ -10,7 +10,9 @@
       "connecting": "Waiting for Device...",
       "starting": "Starting Service...",
       "ready": "Ready",
-      "streamingDesc": "Connected to Android device successfully.",
+      "streamingDesc": "Connected to device successfully.",
+      "streamingDescAndroid": "Connected to Android device successfully.",
+      "streamingDescIos": "Connected to iOS device successfully.",
       "connectingDesc": "Listening on port {port}",
       "startingDesc": "Initializing audio service, please wait.",
       "readyDesc": "Click start to wait for connections.",
@@ -49,7 +51,6 @@
       "aecDisabled": "AEC became unavailable and was automatically disabled.",
       "aecDisabledInferenceFailed": "AEC audio processing failed and was automatically disabled.",
       "aecDisabledModelLoadFailed": "The AEC AI model could not be loaded, so AEC was automatically disabled.",
-      "aecDisabledModelMissing": "The AEC AI model is missing, so AEC was automatically disabled.",
       "aecDisabledPermissionDenied": "MicYou is not allowed to record system audio, so AEC was automatically disabled.",
       "aecDisabledPipeWireUnavailable": "PipeWire is unavailable, so AEC was automatically disabled.",
       "aecDisabledReferenceLost": "The AEC audio reference stream was lost, so AEC was automatically disabled.",
@@ -285,7 +286,7 @@
       "copied": "Copied",
       "exportLog": "Export Log",
       "introTitle": "Introduction",
-      "introText": "MicYou is an open source microphone tool that turns your Android device into a high-quality microphone for your computer. It supports Wi-Fi and USB connections, providing low-latency audio transmission."
+      "introText": "MicYou is an open source microphone tool that turns your Android or iOS device into a high-quality microphone for your computer. It supports Wi-Fi and USB connections, providing low-latency audio transmission."
     },
     "runMode": {
       "title": "Run Mode",
@@ -562,6 +563,7 @@
       "checkAntivirus": "Check antivirus or security software settings",
       "checkUsbCable": "Check USB cable connection",
       "enableUsbDebugging": "Enable USB debugging in Android developer options",
+      "connectIosOverUsb": "iPhone or iPad: open MicYou, choose USB Cable as the computer and tap Connect. Windows also needs iTunes installed",
       "runAdbCommand": "Run this command on PC: {cmd}",
       "checkAdbInstalled": "Ensure ADB is installed on your computer",
       "runAdbManually": "Manually run: {cmd}",
@@ -577,7 +579,7 @@
   },
   "onboarding": {
     "title": "Welcome to MicYou",
-    "desc": "This app turns your Android device into a high-quality microphone for your computer via Wi-Fi or USB.",
+    "desc": "This app turns your Android or iOS device into a high-quality microphone for your computer via Wi-Fi or USB.",
     "quickStart": "Quick Start Guide",
     "step1Title": "1. Install Desktop App",
     "step1Desc": "Download and install MicYou desktop app on your computer",
@@ -671,6 +673,17 @@
     "uninstallConfirm": "Uninstall {name}?",
     "marketSearch": "Search plugin market",
     "marketAll": "All",
-    "marketContribute": "Contribute plugin"
+    "marketContribute": "Contribute plugin",
+    "saving": "Saving…",
+    "importPreview": {
+      "title": "Install this plugin?",
+      "name": "Name",
+      "version": "Version",
+      "author": "Author",
+      "license": "License",
+      "runtime": "Type",
+      "capabilities": "Requested capabilities",
+      "none": "(none)"
+    }
   }
 }

@@ -882,6 +882,11 @@ pub fn host_table_for(ctx: Arc<NativeHostCtx>) -> mpl_host_api_t {
 }
 
 /// Recover the Arc dropped by `host_table_for` (called on plugin deinit).
+///
+/// # Safety
+///
+/// `ctx` must be null or a `ctx` pointer produced by `host_table_for` that has
+/// not been released yet; it must not be used afterwards.
 pub unsafe fn release_host_ctx(ctx: *mut c_void) {
     unsafe {
         if !ctx.is_null() {

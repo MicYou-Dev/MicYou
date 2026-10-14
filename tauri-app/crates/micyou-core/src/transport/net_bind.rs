@@ -157,10 +157,7 @@ pub fn companion_failure_hint(error: &io::Error) -> &'static str {
 pub fn bind_udp_socket_v6only(port: u16) -> io::Result<std::net::UdpSocket> {
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None)?;
     if let Err(e) = socket.set_recv_buffer_size(2 * 1024 * 1024) {
-        eprintln!(
-            "Warning: Failed to set UDP receive buffer size to 2MB: {}",
-            e
-        );
+        log::warn!("Failed to set UDP receive buffer size to 2MB: {}", e);
     }
     socket.set_only_v6(true)?;
     socket.bind(&socket2::SockAddr::from(SocketAddr::new(
@@ -259,10 +256,7 @@ pub fn bind_udp_socket(bind_address: &str, port: u16) -> io::Result<std::net::Ud
     };
     let socket = socket2::Socket::new(domain, socket2::Type::DGRAM, None)?;
     if let Err(e) = socket.set_recv_buffer_size(2 * 1024 * 1024) {
-        eprintln!(
-            "Warning: Failed to set UDP receive buffer size to 2MB: {}",
-            e
-        );
+        log::warn!("Failed to set UDP receive buffer size to 2MB: {}", e);
     }
     if addr.ip().is_ipv6() && addr.ip().is_unspecified() {
         // Best effort dual-stack for `::`; harmless when unsupported.

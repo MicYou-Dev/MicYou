@@ -2,7 +2,7 @@
   <Transition name="dialog">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      class="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
       @click.self="close"
     >
       <div
@@ -40,7 +40,7 @@
               v-for="(item, index) in localChain"
               :key="item"
               :data-index="index"
-              class="flex min-w-0 items-center bg-surface-container rounded-xl p-3 border-2 transition-all shadow-sm group select-none relative"
+              class="flex min-w-0 items-center bg-surface-container rounded-xl p-3 border-2 transition-all shadow-xs group select-none relative"
               :class="
                 draggedIndex === index
                   ? 'opacity-40 border-primary scale-[0.98] pointer-events-none'
@@ -102,12 +102,12 @@ import {
 const props = defineProps<{ isOpen: boolean; chain: string[] }>();
 const emit = defineEmits(['close', 'update:chain']);
 
-import { useAecStatus } from '@/shared/composables/useAecStatus';
+import { useAecStatus } from '@/features/audio/composables/useAecStatus';
 
 const { t, locale } = useI18n();
 
-// AEC 可用性由后端判定：只有平台能提供远场参考时（macOS 14.2+ 的
-// Core Audio process tap，或 Windows/Linux 的现有实现）才开放该节点。
+// AEC 可用性由后端判定：只有平台能提供远场参考时（macOS 的 Core Audio
+// process tap 或 BlackHole，Windows/Linux 的现有实现）才开放该节点。
 const isAecSupported = useAecStatus().aecSupported;
 
 const localChain = ref<string[]>([]);

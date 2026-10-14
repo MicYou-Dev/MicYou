@@ -7,8 +7,6 @@ license.workspace = true
 
 [dependencies]
 prost = "0.14.3"
-bytes = "1.11.1"
-serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 prost-build = "0.14.3"

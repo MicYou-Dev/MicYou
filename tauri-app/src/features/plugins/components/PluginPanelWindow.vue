@@ -4,10 +4,10 @@
  * 由 open_plugin_window 命令创建，hash 路由 #/plugin/:pluginId/:panelId
  * 复用设置对话框的面板渲染逻辑（沙箱 iframe + postMessage 桥 + 主题注入）
  */
-import { ref, onMounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { usePluginPanelBridge } from '@/shared/composables/usePluginPanelBridge';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { buildPanelDocument, usePluginPanelBridge } from '../composables/usePluginPanelBridge';
+import { appWindow, command } from '@/platform';
+import { useWindowTransition } from '@/features/window/composables/useWindowTransition';
 
 const hash = window.location.hash; // #/plugin/<pluginId>/<panelId>
 const parts = hash.replace('#/plugin/', '').split('/');
@@ -17,26 +17,15 @@ const panelId = decodeURIComponent(parts[1] ?? '');
 const panelHtml = ref('');
 const loading = ref(true);
 const error = ref<string | null>(null);
-const { handleMessage } = usePluginPanelBridge(pluginId);
-
-function collectThemeVars(): string {
-  const style = getComputedStyle(document.documentElement);
-  const vars: string[] = [];
-  for (let i = 0; i < style.length; i++) {
-    const name = style[i];
-    if (name.startsWith('--')) {
-      vars.push(`${name}: ${style.getPropertyValue(name)};`);
-    }
-  }
-  return vars.join('\n');
-}
+const frame = ref<HTMLIFrameElement | null>(null);
+const { handleMessage } = usePluginPanelBridge(pluginId, frame);
 
 async function load() {
   loading.value = true;
   error.value = null;
   try {
-    const html = await invoke<string>('get_plugin_panel', { pluginId, panelId });
-    panelHtml.value = `<style>:root{${collectThemeVars()}}</style>${html}`;
+    const html = await command('get_plugin_panel', { pluginId, panelId });
+    panelHtml.value = buildPanelDocument(html);
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -44,19 +33,29 @@ async function load() {
   }
 }
 
-function closeWindow() {
-  void getCurrentWindow().close();
+const windowRoot = ref<HTMLElement | null>(null);
+const transition = useWindowTransition(windowRoot);
+
+let closing = false;
+async function closeWindow() {
+  if (closing) return;
+  closing = true;
+  await transition.exit();
+  await appWindow.destroyCurrentWindow().catch((e) => console.error('Closing panel failed:', e));
 }
 
 onMounted(() => {
+  void transition.enter();
   window.addEventListener('message', handleMessage);
-  load();
+  void load();
 });
+onUnmounted(() => window.removeEventListener('message', handleMessage));
 </script>
 
 <template>
   <div
-    class="h-screen w-screen overflow-hidden flex flex-col"
+    ref="windowRoot"
+    class="h-screen w-screen overflow-hidden rounded-2xl flex flex-col origin-center"
     style="background: hsl(var(--surface))"
   >
     <header
@@ -99,6 +98,7 @@ onMounted(() => {
       </div>
       <iframe
         v-else
+        ref="frame"
         :srcdoc="panelHtml"
         sandbox="allow-scripts allow-popups"
         class="w-full h-full rounded-xl border"

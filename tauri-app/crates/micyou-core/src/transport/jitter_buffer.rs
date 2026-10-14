@@ -13,14 +13,22 @@
  * GNU General Public License for more details.
  */
 
-use crate::transport::session::{audio_payload_len, can_bind_legacy_packet, ExpectedAudioSession};
+use crate::transport::session::{
+    audio_payload_len, can_bind_legacy_packet, pcm_frame_size, ExpectedAudioSession,
+};
 use micyou_protocol::micyou::{AudioPacketMessage, AudioPacketMessageOrdered};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
 const MAX_RETIRED_SESSION_IDS: usize = 32;
-// Android emits about 7 ms packets and prebuffers 15; 128 packets is under one second
-// of latency while still leaving ample reordering/FEC headroom.
+// Leaves ample reordering/FEC headroom (2.5 s of 20 ms Opus frames) without
+// retaining unbounded audio.
 const MAX_BUFFERED_PACKETS: usize = 128;
+/// Audio buffered before playback starts. Counted in time, not packets:
+/// Opus frames are 20 ms while legacy PCM packets were about 7 ms.
+const PREBUFFER_US: u64 = 100_000;
+/// Duration assumed for a packet whose length cannot be determined, matching
+/// legacy PCM clients (15 of them make the old 15-packet prebuffer).
+const FALLBACK_PACKET_US: u64 = 7_000;
 const MAX_FORWARD_SEQUENCE_DISTANCE: i32 = (MAX_BUFFERED_PACKETS as i32) - 1;
 const MAX_PLAYED_PACKETS: usize = 64;
 const MAX_PLAYED_FEC_GROUPS: usize = 2;
@@ -52,7 +60,6 @@ enum FecLayout {
 pub struct JitterBuffer {
     buffer: BTreeMap<i32, AudioPacketMessageOrdered>,
     fec_packets: BTreeMap<i32, AudioPacketMessageOrdered>,
-    played_packets: HashSet<i32>,
     played_audio_packets: BTreeMap<i32, AudioPacketMessageOrdered>,
     played_fec_groups: BTreeMap<i32, PlayedFecGroup>,
     payload_bytes: usize,
@@ -73,7 +80,6 @@ impl JitterBuffer {
         Self {
             buffer: BTreeMap::new(),
             fec_packets: BTreeMap::new(),
-            played_packets: HashSet::new(),
             played_audio_packets: BTreeMap::new(),
             played_fec_groups: BTreeMap::new(),
             payload_bytes: 0,
@@ -92,7 +98,6 @@ impl JitterBuffer {
     fn reset(&mut self) {
         self.buffer.clear();
         self.fec_packets.clear();
-        self.played_packets.clear();
         self.played_audio_packets.clear();
         self.played_fec_groups.clear();
         self.payload_bytes = 0;
@@ -263,46 +268,54 @@ impl JitterBuffer {
         }
 
         if !self.prebuffered {
-            if self.buffer.len() < 15 {
+            let buffered_us: u64 = self
+                .buffer
+                .values()
+                .map(|packet| {
+                    packet
+                        .audio_packet
+                        .as_ref()
+                        .and_then(packet_duration_us)
+                        .unwrap_or(FALLBACK_PACKET_US)
+                })
+                .sum();
+            if buffered_us < PREBUFFER_US {
                 return None;
             }
             self.prebuffered = true;
         }
 
-        let seq_num = self.expected_sequence_number;
-
-        if let Some(packet) = self.buffer.remove(&seq_num) {
-            self.payload_bytes = self
-                .payload_bytes
-                .saturating_sub(audio_payload_len(&packet));
-            self.remember_played_packet(&packet);
-            self.played_packets.insert(seq_num);
-            self.cleanup_played_packets(seq_num);
-            if seq_num == i32::MAX {
-                // No valid successor exists. Drop this session's remaining state and wait
-                // for a new session instead of repeatedly playing the saturated MAX packet.
-                self.reset();
-            } else {
-                self.expected_sequence_number = seq_num + 1;
-            }
-            return Some(packet);
-        }
-
-        let highest_seq = self.buffer.keys().next_back().copied();
-        if let Some(highest) = highest_seq {
-            if highest >= seq_num.saturating_add(5) {
-                // Gap confirmed. Try FEC recovery.
-                if let Some(recovered) = self.try_fec_recovery(seq_num) {
-                    self.expected_sequence_number = self.expected_sequence_number.saturating_add(1);
-                    return Some(recovered);
+        // A burst loss is skipped in one call: stepping one sequence per push
+        // would hold every later packet back and then release them at once.
+        loop {
+            let seq_num = self.expected_sequence_number;
+            if let Some(packet) = self.buffer.remove(&seq_num) {
+                self.payload_bytes = self
+                    .payload_bytes
+                    .saturating_sub(audio_payload_len(&packet));
+                self.remember_played_packet(&packet);
+                self.cleanup_played_packets(seq_num);
+                if seq_num == i32::MAX {
+                    // No valid successor exists. Drop this session's remaining state and wait
+                    // for a new session instead of repeatedly playing the saturated MAX packet.
+                    self.reset();
                 } else {
-                    // Cannot recover, skip this seq
-                    self.expected_sequence_number = self.expected_sequence_number.saturating_add(1);
+                    self.expected_sequence_number = seq_num + 1;
                 }
+                return Some(packet);
+            }
+
+            // Wait until later packets confirm the gap is a loss, not reordering.
+            let highest = self.buffer.keys().next_back().copied()?;
+            if highest < seq_num.saturating_add(5) {
+                return None;
+            }
+            let recovered = self.try_fec_recovery(seq_num);
+            self.expected_sequence_number = seq_num.saturating_add(1);
+            if recovered.is_some() {
+                return recovered;
             }
         }
-
-        None
     }
 
     fn remember_played_packet(&mut self, packet: &AudioPacketMessageOrdered) {
@@ -387,7 +400,6 @@ impl JitterBuffer {
                 break;
             };
             self.played_audio_packets.remove(&oldest);
-            self.played_packets.remove(&oldest);
         }
     }
 
@@ -482,12 +494,42 @@ impl JitterBuffer {
 
     fn cleanup_played_packets(&mut self, current_seq: i32) {
         let threshold = current_seq.saturating_sub(self.fec_group_size.saturating_mul(2));
-        self.played_packets.retain(|seq| *seq >= threshold);
         self.played_audio_packets.retain(|seq, _| *seq >= threshold);
         self.played_fec_groups
             .retain(|group, _| group.saturating_add(self.fec_group_size) >= threshold);
         self.trim_played_history();
     }
+}
+
+/// Playback length of one audio packet, if its payload says.
+fn packet_duration_us(audio: &AudioPacketMessage) -> Option<u64> {
+    let sample_rate = u64::try_from(audio.sample_rate).ok().filter(|&r| r > 0)?;
+    let frames = if audio.codec == micyou_protocol::CODEC_OPUS {
+        opus_packet_samples_48k(&audio.buffer)? * sample_rate / 48_000
+    } else {
+        (audio.buffer.len() / pcm_frame_size(audio)?) as u64
+    };
+    (frames > 0).then(|| frames * 1_000_000 / sample_rate)
+}
+
+/// Samples per channel at 48 kHz in an Opus packet, from its TOC byte
+/// (RFC 6716 section 3.1).
+fn opus_packet_samples_48k(packet: &[u8]) -> Option<u64> {
+    let toc = *packet.first()?;
+    let config = toc >> 3;
+    // Frame sizes in 48 kHz samples: SILK 10/20/40/60 ms, hybrid 10/20 ms,
+    // CELT 2.5/5/10/20 ms.
+    let frame = match config {
+        0..=11 => [480, 960, 1920, 2880][usize::from(config % 4)],
+        12..=15 => [480, 960][usize::from(config % 2)],
+        _ => [120, 240, 480, 960][usize::from(config % 4)],
+    };
+    let frames = match toc & 0x3 {
+        0 => 1,
+        1 | 2 => 2,
+        _ => u64::from(*packet.get(1)? & 0x3f),
+    };
+    Some(frame * frames)
 }
 
 #[cfg(test)]
@@ -560,7 +602,7 @@ mod tests {
         assert_eq!(jitter.buffer.len(), 1);
         assert!(jitter.buffer.contains_key(&0));
         assert!(jitter.fec_packets.is_empty());
-        assert!(jitter.played_packets.is_empty());
+        assert!(jitter.played_audio_packets.is_empty());
         assert!(!jitter.prebuffered);
         assert!(jitter.pop().is_none());
     }
@@ -1136,6 +1178,60 @@ mod tests {
     }
 
     #[test]
+    fn packet_durations_come_from_pcm_length_and_opus_toc() {
+        let mut pcm = packet(0, 1).audio_packet.unwrap();
+        pcm.buffer = vec![0; 960 * 2];
+        assert_eq!(packet_duration_us(&pcm), Some(20_000));
+
+        let mut opus = pcm.clone();
+        opus.codec = micyou_protocol::CODEC_OPUS;
+        // config 11: SILK 60 ms, one frame
+        opus.buffer = vec![11 << 3, 0];
+        assert_eq!(packet_duration_us(&opus), Some(60_000));
+        // config 31 (CELT 20 ms), code 3 with two frames
+        opus.buffer = vec![(31 << 3) | 3, 2];
+        assert_eq!(packet_duration_us(&opus), Some(40_000));
+        opus.buffer.clear();
+        assert_eq!(packet_duration_us(&opus), None);
+    }
+
+    #[test]
+    fn opus_prebuffer_waits_for_100_ms() {
+        let mut jitter = JitterBuffer::new(12);
+        jitter.prepare_transport_session(ExpectedAudioSession::Bound(101));
+        let opus_20ms = |sequence| {
+            let mut p = packet(sequence, 101);
+            let audio = p.audio_packet.as_mut().unwrap();
+            audio.codec = micyou_protocol::CODEC_OPUS;
+            audio.buffer = vec![31 << 3, 0];
+            p
+        };
+        for sequence in 0..4 {
+            jitter.push(opus_20ms(sequence));
+            assert!(jitter.pop().is_none());
+        }
+        jitter.push(opus_20ms(4));
+        assert_eq!(jitter.pop().unwrap().sequence_number, 0);
+    }
+
+    #[test]
+    fn burst_loss_is_skipped_in_one_pop() {
+        let mut jitter = JitterBuffer::new(1000);
+        jitter.prepare_transport_session(ExpectedAudioSession::Bound(101));
+        jitter.push(packet(0, 101));
+        jitter.prebuffered = true;
+        assert_eq!(jitter.pop().unwrap().sequence_number, 0);
+        // 1..20 lost; 20..30 arrive.
+        for sequence in 20..30 {
+            jitter.push(packet(sequence, 101));
+        }
+        let drained: Vec<_> = std::iter::from_fn(|| jitter.pop())
+            .map(|p| p.sequence_number)
+            .collect();
+        assert_eq!(drained, (20..30).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn played_packet_history_has_hard_entry_limit() {
         let mut jitter = JitterBuffer::new(1000);
         jitter.prepare_transport_session(ExpectedAudioSession::Bound(101));
@@ -1147,9 +1243,9 @@ mod tests {
             assert_eq!(jitter.pop().unwrap().sequence_number, sequence);
         }
 
-        assert_eq!(jitter.played_packets.len(), MAX_PLAYED_PACKETS);
-        assert!(!jitter.played_packets.contains(&0));
-        assert!(jitter.played_packets.contains(&99));
+        assert_eq!(jitter.played_audio_packets.len(), MAX_PLAYED_PACKETS);
+        assert!(!jitter.played_audio_packets.contains_key(&0));
+        assert!(jitter.played_audio_packets.contains_key(&99));
     }
 
     #[test]

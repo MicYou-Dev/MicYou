@@ -10,7 +10,9 @@
       "connecting": "等待设备喵... (๑•̀ㅂ•́)و✧",
       "starting": "启动服务中喵...",
       "ready": "就绪喵~",
-      "streamingDesc": "已成功连接安卓设备喵~",
+      "streamingDesc": "已成功连接设备喵~",
+      "streamingDescAndroid": "已成功连接安卓设备喵~",
+      "streamingDescIos": "已成功连接 iOS 设备喵~",
       "connectingDesc": "正在监听端口 {port} 喵~",
       "startingDesc": "正在初始化音频服务喵，请稍等~",
       "readyDesc": "点击开始等待连接喵~",
@@ -47,7 +49,6 @@
       "aecDisabled": "AEC 不可用喵~已自动停用喵~",
       "aecDisabledInferenceFailed": "AEC 音频处理失败喵~已自动停用喵~",
       "aecDisabledModelLoadFailed": "AEC AI 模型加载失败喵~已自动停用喵~",
-      "aecDisabledModelMissing": "找不到 AEC AI 模型喵~已自动停用喵~",
       "aecDisabledPermissionDenied": "未获录制系统音频许可喵~AEC 已自动停用喵~",
       "aecDisabledPipeWireUnavailable": "PipeWire 不可用喵~AEC 已自动停用喵~",
       "aecDisabledReferenceLost": "AEC 音频参考流中断了喵~已自动停用喵~",
@@ -283,7 +284,7 @@
       "copied": "复制好啦喵~",
       "exportLog": "导出日志文件喵~",
       "introTitle": "简介喵~",
-      "introText": "MicYou 是一个开源麦克风工具喵~可以把你的安卓设备变成电脑的高质量麦克风喵！支持 Wi-Fi 和 USB 连接，提供低延迟音频传输喵~ (≧∇≦)/"
+      "introText": "MicYou 是一个开源麦克风工具喵~可以把你的安卓或 iOS 设备变成电脑的高质量麦克风喵！支持 Wi-Fi 和 USB 连接，提供低延迟音频传输喵~ (≧∇≦)/"
     },
     "runMode": {
       "title": "运行模式喵~",
@@ -560,6 +561,7 @@
       "checkAntivirus": "检查防病毒或安全软件设置喵~",
       "checkUsbCable": "检查 USB 线缆连接喵~",
       "enableUsbDebugging": "在 Android 开发者选项中启用 USB 调试喵~",
+      "connectIosOverUsb": "iPhone 或 iPad：打开 MicYou，电脑选择「USB 数据线」后点击连接喵~ Windows 还需要安装 iTunes 喵~",
       "runAdbCommand": "在电脑上运行此命令：{cmd} 喵~",
       "checkAdbInstalled": "确保电脑上已安装 ADB 喵~",
       "runAdbManually": "手动运行：{cmd} 喵~",
@@ -575,7 +577,7 @@
   },
   "onboarding": {
     "title": "欢迎使用 MicYou 喵~",
-    "desc": "本应用可以把你的安卓设备变成电脑的高质量麦克风喵~支持 Wi-Fi 和 USB 连接喵~",
+    "desc": "本应用可以把你的安卓或 iOS 设备变成电脑的高质量麦克风喵~支持 Wi-Fi 和 USB 连接喵~",
     "quickStart": "快速入门指南喵~ (๑•̀ㅂ•́)و✧",
     "step1Title": "1. 安装桌面应用喵~",
     "step1Desc": "在电脑上下载并安装 MicYou 桌面应用喵~",
@@ -668,6 +670,17 @@
     "uninstallConfirm": "卸載 {name} 喵？",
     "marketSearch": "搜喵插件商店",
     "marketAll": "全喵",
-    "marketContribute": "贡献喵插件"
+    "marketContribute": "贡献喵插件",
+    "saving": "存着喵…",
+    "importPreview": {
+      "title": "要装这个插件喵？",
+      "name": "名字喵",
+      "version": "版本喵",
+      "author": "作者喵",
+      "license": "许可喵",
+      "runtime": "类型喵",
+      "capabilities": "要的能力喵",
+      "none": "（没有喵）"
+    }
   }
 }

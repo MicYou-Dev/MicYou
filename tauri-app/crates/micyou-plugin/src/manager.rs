@@ -482,7 +482,7 @@ mod tests {
             .discover_plugin(plugins_dir.join("dev.micyou.gamma"))
             .unwrap();
         assert_eq!(id, "dev.micyou.gamma");
-        assert!(manager.is_enabled(&id).unwrap() == false);
+        assert!(!manager.is_enabled(&id).unwrap());
 
         manager.set_enabled(&id, true).unwrap();
         manager.remove_plugin(&id).unwrap();

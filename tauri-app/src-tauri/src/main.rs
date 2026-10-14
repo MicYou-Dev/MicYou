@@ -29,21 +29,30 @@ mod menubar;
 mod tray;
 mod window;
 
+/// Picks the WebKitGTK rendering path before GTK starts.
+///
+/// The accelerated DMA-BUF renderer is the default, including on NVIDIA:
+/// with explicit sync disabled (`__NV_DISABLE_EXPLICIT_SYNC=1`) current
+/// drivers render through it on KWin. `MICYOU_RENDERER=software` or
+/// `--software-rendering` switches to CPU rendering. Variables already set
+/// in the environment always win.
 #[cfg(target_os = "linux")]
 fn configure_renderer() {
-    let software_requested = std::env::args_os().any(|arg| arg == "--software-rendering")
+    let software = std::env::args_os().any(|arg| arg == "--software-rendering")
         || std::env::var("MICYOU_RENDERER")
             .is_ok_and(|value| value.eq_ignore_ascii_case("software"));
+    let set_default = |key: &str, value: &str| {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    };
 
-    // Compatibility fallback for drivers/compositors where WebKitGTK's
-    // accelerated DMA-BUF path produces a blank/transparent window or crashes (Issue #323).
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-
-    if software_requested {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    if software {
+        set_default("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        set_default("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         eprintln!("[Renderer] Software rendering fallback enabled");
+    } else if std::path::Path::new("/proc/driver/nvidia/version").exists() {
+        set_default("__NV_DISABLE_EXPLICIT_SYNC", "1");
     }
 }
 

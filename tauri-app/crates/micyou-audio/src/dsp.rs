@@ -14,14 +14,12 @@
  */
 
 #[cfg(feature = "noise-suppression")]
-use std::collections::{HashMap, VecDeque};
-#[cfg(feature = "noise-suppression")]
-use std::path::Path;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 #[cfg(feature = "noise-suppression")]
-use ndarray::{Array3, ArrayD, IxDyn};
+use micyou_infer::{Graph, Session};
 #[cfg(feature = "dsp")]
 use nnnoiseless::DenoiseState;
 #[cfg(feature = "noise-suppression")]
@@ -152,7 +150,7 @@ fn default_output_buffer_ms() -> u32 {
     300
 }
 
-// ─── Shared ONNX window helpers ────────────────────────────────────────────
+// ─── Shared STFT window helpers ───────────────────────────────────────────
 
 #[cfg(feature = "noise-suppression")]
 fn sqrt_hann_window(size: usize) -> Vec<f32> {
@@ -178,51 +176,55 @@ fn overlap_add_gain(window: &[f32], hop_length: usize) -> f32 {
     }
 }
 
-// ─── PureVox6 ONNX noise suppression ────────────────────────────────────
+// ─── Compiled native models (pure Rust, no ONNX Runtime) ──────────────────
 
+/// Statically compiled MCYI model blobs and their shared parsed graphs.
+///
+/// The blobs were compiled from the ONNX exports (purevox6.onnx /
+/// aec7_ep0185.onnx) and validated against onnxruntime — the compiler and
+/// the full verification matrix (numpy reference interpreter, per-op and
+/// streaming goldens, time-domain DSP goldens) live in the experimental
+/// `libmicyou` backend repository; see `docs/pure-rust-inference.md`.
+/// Embedding the blobs removes both the ONNX Runtime shared library and
+/// runtime model discovery from this codebase.
 #[cfg(feature = "noise-suppression")]
-fn onnx_warning_logger() -> ort::logging::LoggerFunction {
-    Arc::new(|level, _category, _id, _location, message| match level {
-        ort::logging::LogLevel::Warning => log::warn!(target: "onnxruntime", "{message}"),
-        ort::logging::LogLevel::Error => log::error!(target: "onnxruntime", "{message}"),
-        ort::logging::LogLevel::Fatal => {
-            log::error!(target: "onnxruntime", "[FATAL] {message}")
-        }
-        ort::logging::LogLevel::Verbose | ort::logging::LogLevel::Info => {}
-    })
+mod native_models {
+    use super::Graph;
+    use std::sync::OnceLock;
+
+    pub static PUREVOX6_BLOB: &[u8] = include_bytes!("assets/purevox6.mcy");
+    pub static AEC7_BLOB: &[u8] = include_bytes!("assets/aec7.mcy");
+
+    pub fn purevox_graph() -> &'static Graph {
+        static GRAPH: OnceLock<Graph> = OnceLock::new();
+        GRAPH.get_or_init(|| {
+            Graph::parse(PUREVOX6_BLOB)
+                .expect("embedded purevox6.mcy must parse (blob is CI-verified)")
+        })
+    }
+
+    pub fn aec_graph() -> &'static Graph {
+        static GRAPH: OnceLock<Graph> = OnceLock::new();
+        GRAPH.get_or_init(|| {
+            Graph::parse(AEC7_BLOB).expect("embedded aec7.mcy must parse (blob is CI-verified)")
+        })
+    }
 }
 
-/// Initialize the ONNX Runtime by dynamically loading the shared library from
-/// the given path.  With `load-dynamic` this must be called once before any
-/// [`Session`](ort::session::Session) is built.
-
-#[cfg(feature = "noise-suppression")]
-pub fn init_ort_runtime(lib_path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    ort::init_from(lib_path)?
-        .with_logger(onnx_warning_logger())
-        .commit();
-    ort::environment::Environment::current()?.set_log_level(ort::logging::LogLevel::Warning);
-    Ok(())
-}
-
-/// Apply the log-level guard before building the first session.
-/// `init_ort_runtime` must already have been called so the environment exists.
-#[cfg(feature = "noise-suppression")]
-fn configure_onnx_logging() -> ort::Result<()> {
-    ort::environment::Environment::current()?.set_log_level(ort::logging::LogLevel::Warning);
-    Ok(())
-}
+// ─── PureVox6 native noise suppression ────────────────────────────────────
 
 #[cfg(feature = "noise-suppression")]
 struct PureVoxProcessor {
-    session: ort::session::Session,
+    sess: Session<'static>,
     frame_size: usize, // 960
     hop_length: usize, // 480
     window: Vec<f32>,
     ola_gain: f32,
     previous: Vec<f32>,
     ola_accumulator: Vec<f32>,
-    // PureVox6 has 4 independent cache states (flat 1D)
+    /// Model input staging: interleaved (re, im) pairs per bin, [1,481,1,2].
+    spec_flat: Vec<f32>,
+    // PureVox6 has 4 independent cache states (flat 1D), fed back each frame.
     enc_c: Vec<f32>,   // [7368]
     dec_c: Vec<f32>,   // [1440]
     tfa_c: Vec<f32>,   // [800]
@@ -233,17 +235,21 @@ struct PureVoxProcessor {
 
 #[cfg(feature = "noise-suppression")]
 impl PureVoxProcessor {
-    fn new(model_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let frame_size = 960;
         let hop_length = 480;
+        let spec_size = frame_size / 2 + 1;
 
-        configure_onnx_logging()?;
-        let session = ort::session::Session::builder()?
-            .with_log_level(ort::logging::LogLevel::Warning)?
-            .with_logger(onnx_warning_logger())?
-            .with_intra_threads(1)?
-            .with_inter_threads(1)?
-            .commit_from_file(model_path)?;
+        let graph = native_models::purevox_graph();
+        // Sanity-check the embedded contract once per processor.
+        if graph.num_inputs() != 5 || graph.num_outputs() != 5 {
+            return Err(format!(
+                "purevox6 model contract mismatch: {} in / {} out",
+                graph.num_inputs(),
+                graph.num_outputs()
+            ))?;
+        }
+        let sess = Session::new(graph);
 
         let window = sqrt_hann_window(frame_size);
         let ola_gain = overlap_add_gain(&window, hop_length);
@@ -253,23 +259,19 @@ impl PureVoxProcessor {
         let fft_forward = planner.plan_fft_forward(frame_size);
         let fft_inverse = planner.plan_fft_inverse(frame_size);
 
-        let enc_c = vec![0.0f32; 7368];
-        let dec_c = vec![0.0f32; 1440];
-        let tfa_c = vec![0.0f32; 800];
-        let inter_c = vec![0.0f32; 4608];
-
         Ok(Self {
-            session,
+            sess,
             frame_size,
             hop_length,
             window,
             ola_gain,
             previous: vec![0.0; hop_length],
             ola_accumulator: vec![0.0; frame_size],
-            enc_c,
-            dec_c,
-            tfa_c,
-            inter_c,
+            spec_flat: vec![0.0f32; spec_size * 2],
+            enc_c: vec![0.0f32; 7368],
+            dec_c: vec![0.0f32; 1440],
+            tfa_c: vec![0.0f32; 800],
+            inter_c: vec![0.0f32; 4608],
             fft_forward,
             fft_inverse,
         })
@@ -296,76 +298,57 @@ impl PureVoxProcessor {
         }
 
         // FFT
-        use rustfft::num_complex::Complex;
         let mut complex_buf: Vec<Complex<f32>> =
             fft_buffer.iter().map(|&v| Complex::new(v, 0.0)).collect();
         self.fft_forward.process(&mut complex_buf);
 
-        // Convert to model input format: flat vec for [1, spec_size, 1, 2]
-        let spec_size_2 = spec_size * 2;
-        let mut spec_flat = vec![0.0f32; spec_size_2];
+        // Model input format: interleaved (re, im) for [1, 481, 1, 2]
         for i in 0..spec_size {
-            spec_flat[i * 2] = complex_buf[i].re;
-            spec_flat[i * 2 + 1] = complex_buf[i].im;
+            self.spec_flat[i * 2] = complex_buf[i].re;
+            self.spec_flat[i * 2 + 1] = complex_buf[i].im;
         }
 
-        // Create ORT values for all 5 inputs
-        let val_spec =
-            ort::value::Value::from_array((vec![1, spec_size, 1, 2], spec_flat)).unwrap();
-        let val_enc_c = ort::value::Value::from_array((vec![1, 7368], self.enc_c.clone())).unwrap();
-        let val_dec_c = ort::value::Value::from_array((vec![1, 1440], self.dec_c.clone())).unwrap();
-        let val_tfa_c = ort::value::Value::from_array((vec![1, 800], self.tfa_c.clone())).unwrap();
-        let val_inter_c =
-            ort::value::Value::from_array((vec![1, 4608], self.inter_c.clone())).unwrap();
+        // Run inference (input order: spec, enc_c, dec_c, tfa_c, inter_c)
+        let inputs: [&[f32]; 5] = [
+            &self.spec_flat,
+            &self.enc_c,
+            &self.dec_c,
+            &self.tfa_c,
+            &self.inter_c,
+        ];
+        if let Err(e) = self.sess.run(&inputs) {
+            log::error!("PureVox inference failed: {e}");
+            return input.to_vec();
+        }
 
-        // Run inference
-        let outputs = match self.session.run(ort::inputs![
-            &val_spec,
-            &val_enc_c,
-            &val_dec_c,
-            &val_tfa_c,
-            &val_inter_c,
-        ]) {
-            Ok(o) => o,
+        // Extract enhanced spectrum (output 0)
+        match self.sess.output(0) {
+            Ok(enh) => {
+                for i in 0..spec_size {
+                    complex_buf[i] = Complex::new(enh[i * 2], enh[i * 2 + 1]);
+                }
+            }
             Err(e) => {
-                eprintln!("PureVox ONNX inference failed: {}", e);
+                log::error!("PureVox output read failed: {e}");
                 return input.to_vec();
             }
-        };
-
-        // Extract output spectrum (output[0] = enhanced_spec)
-        if let Ok(output_tensor) = outputs[0].try_extract_tensor::<f32>() {
-            let output_data = output_tensor.1;
-            for i in 0..spec_size {
-                complex_buf[i] = Complex::new(output_data[i * 2], output_data[i * 2 + 1]);
-            }
-            for i in spec_size..frame_size {
-                complex_buf[i] = complex_buf[frame_size - i].conj();
+        }
+        // Feed the updated cache states back for the next frame
+        for (i, cache) in [
+            &mut self.enc_c,
+            &mut self.dec_c,
+            &mut self.tfa_c,
+            &mut self.inter_c,
+        ]
+        .iter_mut()
+        .enumerate()
+        {
+            if let Err(e) = self.sess.copy_output(i + 1, cache) {
+                log::error!("PureVox cache readback failed: {e}");
             }
         }
-
-        // Update state caches from outputs 1..4
-        if outputs.len() >= 5 {
-            if let Ok(enc) = outputs[1].try_extract_tensor::<f32>() {
-                if enc.1.len() == self.enc_c.len() {
-                    self.enc_c.copy_from_slice(enc.1);
-                }
-            }
-            if let Ok(dec) = outputs[2].try_extract_tensor::<f32>() {
-                if dec.1.len() == self.dec_c.len() {
-                    self.dec_c.copy_from_slice(dec.1);
-                }
-            }
-            if let Ok(tfa) = outputs[3].try_extract_tensor::<f32>() {
-                if tfa.1.len() == self.tfa_c.len() {
-                    self.tfa_c.copy_from_slice(tfa.1);
-                }
-            }
-            if let Ok(inter) = outputs[4].try_extract_tensor::<f32>() {
-                if inter.1.len() == self.inter_c.len() {
-                    self.inter_c.copy_from_slice(inter.1);
-                }
-            }
+        for i in spec_size..frame_size {
+            complex_buf[i] = complex_buf[frame_size - i].conj();
         }
 
         // IFFT
@@ -398,7 +381,7 @@ impl PureVoxProcessor {
     }
 }
 
-// ─── AEC7 ONNX acoustic echo cancellation ────────────────────────────────
+// ─── AEC7 native acoustic echo cancellation ──────────────────────────────
 
 #[cfg(feature = "noise-suppression")]
 const AEC_WIN_LEN: usize = 960;
@@ -409,14 +392,14 @@ const AEC_NFFT: usize = 960;
 #[cfg(feature = "noise-suppression")]
 const AEC_N_BINS: usize = AEC_NFFT / 2 + 1; // 481
 
-/// Hardcoded aec7 cache state configuration.
-/// Shapes and output indices are written explicitly rather than read from
-/// the ONNX model, because some ONNX runtimes may not report static shapes
-/// reliably.  This matches the C++ reference implementation.
+/// AEC7 cache state configuration, in compiled-model graph order.
 ///
-/// `deep_enc_conv` (shape [1,0]) is excluded — the ONNX optimizer folds it
-/// away, so it is neither an input nor a meaningful output.
-/// Its output `deep_enc_conv_o` still appears at output index 5 and is skipped.
+/// Cache `j` is model input `j + 2` (inputs 0/1 are the mic/far STFT
+/// frames) and is refreshed from model output `output_idx` after every
+/// frame. `deep_enc_conv` (shape [1,0]) is excluded — the ONNX optimizer
+/// folded it away, so it is neither an input nor a meaningful output; its
+/// placeholder `deep_enc_conv_o` still appears at output index 5 and is
+/// skipped. This matches the original C++ reference implementation.
 #[cfg(feature = "noise-suppression")]
 const AEC_CACHE_CONFIGS: &[(&str, &[usize], usize)] = &[
     ("res_enc_conv", &[1, 135680], 1),
@@ -434,18 +417,18 @@ const AEC_CACHE_CONFIGS: &[(&str, &[usize], usize)] = &[
     ("mic_prev2", &[1, 1, 1, 320], 13),
 ];
 
-/// ONNX-based AEC7 acoustic echo cancellation.
+/// Native AEC7 acoustic echo cancellation (pure-Rust VM, no ONNX Runtime).
 /// Takes both mic (near-end) and far-end (speaker) audio and cancels echo.
-/// Based on the aec7_ep0185.onnx model.
+/// Compiled from the aec7_ep0185.onnx model.
 #[cfg(feature = "noise-suppression")]
 struct AecProcessor {
-    session: ort::session::Session,
-    /// Cache state tensors with hardcoded shapes (see AEC_CACHE_CONFIGS).
-    cache_tensors: Vec<ArrayD<f32>>,
-    /// Input names matching the ONNX model — used for HashMap feed lookups.
-    cache_names: Vec<String>,
-    /// Hardcoded output index for each cache tensor (see AEC_CACHE_CONFIGS).
-    cache_output_indices: Vec<usize>,
+    sess: Session<'static>,
+    /// STFT frame staging for the two model inputs ([1,2,481] planar:
+    /// 481 real parts followed by 481 imaginary parts).
+    mic_frame: Vec<f32>,
+    far_frame: Vec<f32>,
+    /// Cache state tensors in graph order (see AEC_CACHE_CONFIGS).
+    caches: Vec<Vec<f32>>,
     // STFT / iSTFT / OLA
     window: Vec<f32>,
     /// Running per-sample accumulation of window² for correct COLA normalization.
@@ -462,22 +445,22 @@ struct AecProcessor {
     scratch_far_frame: Vec<f32>,
     scratch_time_frame: Vec<f32>,
     scratch_complex: Vec<Complex<f32>>,
-    scratch_mic_stft: Array3<f32>,
-    scratch_far_stft: Array3<f32>,
 }
 
 #[cfg(feature = "noise-suppression")]
 impl AecProcessor {
-    fn new(model_path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
         use rustfft::FftPlanner;
 
-        configure_onnx_logging()?;
-        let session = ort::session::Session::builder()?
-            .with_log_level(ort::logging::LogLevel::Warning)?
-            .with_logger(onnx_warning_logger())?
-            .with_intra_threads(1)?
-            .with_inter_threads(1)?
-            .commit_from_file(model_path)?;
+        let graph = native_models::aec_graph();
+        if graph.num_inputs() != 14 || graph.num_outputs() != 14 {
+            return Err(format!(
+                "aec7 model contract mismatch: {} in / {} out",
+                graph.num_inputs(),
+                graph.num_outputs()
+            ))?;
+        }
+        let sess = Session::new(graph);
 
         // Sine window (sqrt of Hann). Applied once during analysis
         // (forward_stft) and once during synthesis (iSTFT in process),
@@ -488,24 +471,16 @@ impl AecProcessor {
         let fft_forward = planner.plan_fft_forward(AEC_NFFT);
         let fft_inverse = planner.plan_fft_inverse(AEC_NFFT);
 
-        // Cache state tensors use hardcoded shapes and output indices
-        // (matching the C++ reference).  This avoids relying on the ONNX
-        // runtime to report static shapes reliably.
-        let mut cache_names = Vec::with_capacity(AEC_CACHE_CONFIGS.len());
-        let mut cache_tensors = Vec::with_capacity(AEC_CACHE_CONFIGS.len());
-        let mut cache_output_indices = Vec::with_capacity(AEC_CACHE_CONFIGS.len());
-
-        for &(name, shape, output_idx) in AEC_CACHE_CONFIGS {
-            cache_names.push(name.to_string());
-            cache_tensors.push(ArrayD::zeros(IxDyn(shape)));
-            cache_output_indices.push(output_idx);
-        }
+        let caches = AEC_CACHE_CONFIGS
+            .iter()
+            .map(|(_, shape, _)| vec![0.0f32; shape.iter().product()])
+            .collect();
 
         Ok(Self {
-            session,
-            cache_tensors,
-            cache_names,
-            cache_output_indices,
+            sess,
+            mic_frame: vec![0.0f32; 2 * AEC_N_BINS],
+            far_frame: vec![0.0f32; 2 * AEC_N_BINS],
+            caches,
             window,
             window_sum: vec![0.0; AEC_WIN_LEN],
             mic_previous: vec![0.0; AEC_HOP_LEN],
@@ -513,18 +488,15 @@ impl AecProcessor {
             ola_accumulator: vec![0.0; AEC_WIN_LEN],
             fft_forward,
             fft_inverse,
-            // Pre-allocated scratch buffers — allocated once at construction
             scratch_mic_frame: vec![0.0f32; AEC_WIN_LEN],
             scratch_far_frame: vec![0.0f32; AEC_WIN_LEN],
             scratch_time_frame: vec![0.0f32; AEC_WIN_LEN],
             scratch_complex: vec![Complex::default(); AEC_NFFT],
-            scratch_mic_stft: Array3::zeros((1, 2, AEC_N_BINS)),
-            scratch_far_stft: Array3::zeros((1, 2, AEC_N_BINS)),
         })
     }
 
     fn reset(&mut self) {
-        for tensor in &mut self.cache_tensors {
+        for tensor in &mut self.caches {
             tensor.fill(0.0);
         }
         self.window_sum.fill(0.0);
@@ -562,41 +534,39 @@ impl AecProcessor {
         // ── Apply window + FFT → STFT frames (fill pre-allocated arrays) ──
         forward_stft_free(
             &self.scratch_mic_frame,
-            &mut self.scratch_mic_stft,
+            &mut self.mic_frame,
             &mut self.scratch_complex,
             &self.window,
             &self.fft_forward,
         );
         forward_stft_free(
             &self.scratch_far_frame,
-            &mut self.scratch_far_stft,
+            &mut self.far_frame,
             &mut self.scratch_complex,
             &self.window,
             &self.fft_forward,
         );
 
-        // ── ONNX inference ──
-        // Extract flat slices first to release the immutable borrow on self
-        // before infer_step needs &mut self.
-        let mic_flat = self.scratch_mic_stft.as_slice().unwrap().to_vec();
-        let far_flat = self.scratch_far_stft.as_slice().unwrap().to_vec();
-        let enhanced_stft = self
-            .infer_step(&mic_flat, &far_flat)
-            .map_err(|error| error.to_string())?;
+        // ── Native inference ──
+        let mut inputs: Vec<&[f32]> = Vec::with_capacity(14);
+        inputs.push(&self.mic_frame);
+        inputs.push(&self.far_frame);
+        for cache in self.caches.iter() {
+            inputs.push(cache.as_slice());
+        }
+        self.sess.run(&inputs).map_err(|e| e.to_string())?;
 
         // ── iSTFT + OLA → time domain (reuse scratch buffers) ──
         {
+            let enhanced = self.sess.output(0).map_err(|e| e.to_string())?;
             let complex_buf = &mut self.scratch_complex;
             for bin in 0..AEC_NFFT {
                 if bin < AEC_N_BINS {
-                    complex_buf[bin] =
-                        Complex::new(enhanced_stft[[0, 0, bin]], enhanced_stft[[0, 1, bin]]);
+                    complex_buf[bin] = Complex::new(enhanced[bin], enhanced[AEC_N_BINS + bin]);
                 } else {
                     let mirror = AEC_NFFT - bin;
-                    complex_buf[bin] = Complex::new(
-                        enhanced_stft[[0, 0, mirror]],
-                        -enhanced_stft[[0, 1, mirror]],
-                    );
+                    complex_buf[bin] =
+                        Complex::new(enhanced[mirror], -enhanced[AEC_N_BINS + mirror]);
                 }
             }
             self.fft_inverse.process(complex_buf);
@@ -609,6 +579,13 @@ impl AecProcessor {
             {
                 *sample = complex.re * scale * window;
             }
+        }
+
+        // Update cache states from outputs (indices per AEC_CACHE_CONFIGS).
+        for (cache, &(_, _, output_idx)) in self.caches.iter_mut().zip(AEC_CACHE_CONFIGS.iter()) {
+            self.sess
+                .copy_output(output_idx, cache)
+                .map_err(|e| e.to_string())?;
         }
 
         // ── OLA with per-sample window-sum normalization ──
@@ -641,58 +618,6 @@ impl AecProcessor {
         }
 
         Ok(output)
-    }
-
-    /// Run one ONNX inference step with mic and far STFT frames (flat f32 slices).
-    fn infer_step(
-        &mut self,
-        mf_slice: &[f32],
-        ff_slice: &[f32],
-    ) -> Result<Array3<f32>, Box<dyn std::error::Error>> {
-        use ort::value::Tensor;
-
-        let mut feed: HashMap<String, ort::value::DynValue> = HashMap::new();
-        feed.insert(
-            "mic_frame".into(),
-            Tensor::from_array((vec![1_i64, 2, AEC_N_BINS as i64], mf_slice.to_vec()))?.into_dyn(),
-        );
-        feed.insert(
-            "far_frame".into(),
-            Tensor::from_array((vec![1_i64, 2, AEC_N_BINS as i64], ff_slice.to_vec()))?.into_dyn(),
-        );
-
-        for (name, tensor) in self.cache_names.iter().zip(self.cache_tensors.iter()) {
-            let flat = tensor.as_slice().ok_or("cache not contiguous")?;
-            let shape_i64: Vec<i64> = tensor.shape().iter().map(|&d| d as i64).collect();
-            feed.insert(
-                name.clone(),
-                Tensor::from_array((shape_i64, flat.to_vec()))?.into_dyn(),
-            );
-        }
-
-        let outputs = self.session.run(feed)?;
-
-        let (_shape, enhanced_data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| format!("failed to extract enhanced_frame: {}", e))?;
-        let enhanced = Array3::from_shape_vec((1, 2, AEC_N_BINS), enhanced_data.to_vec())
-            .map_err(|e| format!("enhanced_frame reshape failed: {}", e))?;
-
-        // Update cache states from outputs using hardcoded output indices.
-        // This avoids relying on session.inputs() order and the skip_offset_at
-        // heuristic.  deep_enc_conv_o at index 5 is simply not mapped.
-        for (tensor, &output_idx) in self
-            .cache_tensors
-            .iter_mut()
-            .zip(self.cache_output_indices.iter())
-        {
-            if let Ok((_shape, data)) = outputs[output_idx].try_extract_tensor::<f32>() {
-                let shape = tensor.shape().to_vec();
-                *tensor = ArrayD::from_shape_vec(IxDyn(&shape), data.to_vec())?;
-            }
-        }
-
-        Ok(enhanced)
     }
 }
 
@@ -753,7 +678,7 @@ impl FarEndBuffer {
 #[cfg(feature = "noise-suppression")]
 fn forward_stft_free(
     windowed_frame: &[f32],
-    out: &mut Array3<f32>,
+    out: &mut [f32],
     complex_buf: &mut [Complex<f32>],
     window: &[f32],
     fft_forward: &std::sync::Arc<dyn rustfft::Fft<f32>>,
@@ -764,8 +689,8 @@ fn forward_stft_free(
     fft_forward.process(complex_buf);
 
     for bin in 0..AEC_N_BINS {
-        out[[0, 0, bin]] = complex_buf[bin].re;
-        out[[0, 1, bin]] = complex_buf[bin].im;
+        out[bin] = complex_buf[bin].re;
+        out[AEC_N_BINS + bin] = complex_buf[bin].im;
     }
 }
 
@@ -1054,25 +979,21 @@ pub struct DspProcessor {
     ns_buffer_left: Vec<f32>,
     #[cfg(feature = "dsp")]
     ns_buffer_right: Vec<f32>,
-    // PureVox ONNX processor - separate per channel
+    // PureVox native processor - separate per channel
     #[cfg(feature = "noise-suppression")]
     purevox_left: Option<PureVoxProcessor>,
     #[cfg(feature = "noise-suppression")]
     purevox_right: Option<PureVoxProcessor>,
 
-    #[cfg(feature = "noise-suppression")]
-    purevox_model_path: Option<PathBuf>,
-    /// Once a model load fails, stop retrying to avoid expensive reloads
-    /// every frame on the real-time audio thread.
+    /// Once processor construction fails, stop retrying to avoid expensive
+    /// rebuilds every frame on the real-time audio thread.
     #[cfg(feature = "noise-suppression")]
     purevox_load_failed: bool,
 
-    // AEC7 ONNX acoustic echo cancellation.
+    // AEC7 native acoustic echo cancellation.
     // Stereo is downmixed to mono before AEC, then upmixed back (reference pattern).
     #[cfg(feature = "noise-suppression")]
     aec: Option<AecProcessor>,
-    #[cfg(feature = "noise-suppression")]
-    aec_model_path: Option<PathBuf>,
     #[cfg(feature = "noise-suppression")]
     /// Latches model loading or inference failures until the next transport
     /// session, preventing expensive retries on the real-time audio thread.
@@ -1147,8 +1068,6 @@ impl DspProcessor {
     pub fn new(settings: Arc<RwLock<AudioDspSettings>>, _model_dir: Option<PathBuf>) -> Self {
         Self {
             settings: settings.clone(),
-            #[cfg(feature = "noise-suppression")]
-            purevox_model_path: _model_dir.as_ref().map(|d| d.join("purevox6.onnx")),
             #[cfg(feature = "dsp")]
             denoiser_left: DenoiseState::new(),
             #[cfg(feature = "dsp")]
@@ -1166,8 +1085,6 @@ impl DspProcessor {
 
             #[cfg(feature = "noise-suppression")]
             aec: None,
-            #[cfg(feature = "noise-suppression")]
-            aec_model_path: _model_dir.as_ref().map(|d| d.join("aec7_ep0185.onnx")),
             #[cfg(feature = "noise-suppression")]
             aec_session_failed: false,
             #[cfg(feature = "noise-suppression")]
@@ -1233,7 +1150,11 @@ impl DspProcessor {
 
         let mut to_process = std::mem::take(&mut self.to_process_buf);
 
-        let settings = self.settings.read().unwrap().clone();
+        let settings = self
+            .settings
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         self.equalizer.update_filters(&settings.equalizer);
 
         for effect in &settings.processing_chain {
@@ -1355,7 +1276,7 @@ impl DspProcessor {
         self.far_end.clear();
         self.aec_failure = None;
         // Model loading and inference failures are scoped to one transport
-        // session. A failed inference discards the ONNX session, so clearing the
+        // session. A failed inference discards the VM session, so clearing the
         // latch here causes the next session to build a fresh one rather than
         // reusing potentially corrupted runtime state.
         self.aec_session_failed = false;
@@ -1378,24 +1299,14 @@ impl DspProcessor {
             return false;
         }
 
-        let Some(path) = self.aec_model_path.as_deref() else {
-            self.fail_aec_load(AecFailure::ModelMissing);
-            return false;
-        };
-        if !path.exists() {
-            log::warn!("[DSP] AEC7 model not found at {:?}, disabling AEC", path);
-            self.fail_aec_load(AecFailure::ModelMissing);
-            return false;
-        }
-
-        match AecProcessor::new(path) {
+        match AecProcessor::new() {
             Ok(processor) => {
-                log::info!("[DSP] AEC7 ONNX model loaded: {:?}", path);
+                log::info!("[DSP] AEC7 native model ready (embedded, no ONNX Runtime)");
                 self.aec = Some(processor);
                 true
             }
             Err(error) => {
-                log::error!("[DSP] Failed to load AEC7 model: {error}");
+                log::error!("[DSP] Failed to initialize AEC7 model: {error}");
                 self.fail_aec_load(AecFailure::ModelLoadFailed);
                 false
             }
@@ -1410,7 +1321,7 @@ impl DspProcessor {
 
     #[cfg(feature = "noise-suppression")]
     fn fail_aec_inference(&mut self) {
-        // Do not retry a failing ONNX session for every audio packet. Keep the
+        // Do not retry a failing VM session for every audio packet. Keep the
         // failure latched for this transport session and rebuild on the next
         // reset_aec_session().
         self.aec = None;
@@ -1433,7 +1344,7 @@ impl DspProcessor {
             .expect("AEC model must be loaded before processing");
         let mut output = Vec::with_capacity(input.len());
 
-        for chunk in input.chunks_exact(AEC_HOP_LEN) {
+        for chunk in input.as_chunks::<AEC_HOP_LEN>().0 {
             match self.far_end.take_hop() {
                 Some(far_chunk) => output.extend(processor.process(chunk, &far_chunk)?),
                 None => output.extend_from_slice(chunk),
@@ -1458,7 +1369,7 @@ impl DspProcessor {
         let clean = match self.process_aec_mono(input) {
             Ok(clean) => clean,
             Err(error) => {
-                log::error!("[DSP] AEC ONNX inference failed: {error}");
+                log::error!("[DSP] AEC inference failed: {error}");
                 self.fail_aec_inference();
                 return;
             }
@@ -1582,50 +1493,30 @@ impl DspProcessor {
 
     #[cfg(feature = "noise-suppression")]
     fn apply_purevox(&mut self, data: &mut Vec<f32>, channels: usize, intensity: f32) {
-        // Lazy init for both channels — only attempt once; if loading fails,
-        // mark it so we don't retry on every audio frame.
+        // Lazy init for both channels — only attempt once; if construction
+        // fails, mark it so we don't retry on every audio frame.
         if self.purevox_left.is_none() && !self.purevox_load_failed {
-            if let Some(path) = &self.purevox_model_path {
-                if path.exists() {
-                    match PureVoxProcessor::new(path) {
-                        Ok(proc) => {
-                            log::info!("[DSP] PureVox ONNX model loaded (L): {:?}", path);
-                            self.purevox_left = Some(proc);
-                        }
-                        Err(e) => {
-                            log::error!("[DSP] Failed to load PureVox model: {}", e);
-                            self.purevox_load_failed = true;
-                            self.apply_rnnoise(data, channels, intensity);
-                            return;
-                        }
-                    }
-                } else {
-                    log::warn!(
-                        "[DSP] PureVox model not found at {:?}, falling back to RNNoise",
-                        path
-                    );
+            match PureVoxProcessor::new() {
+                Ok(proc) => {
+                    log::info!("[DSP] PureVox native model ready (L, embedded)");
+                    self.purevox_left = Some(proc);
+                }
+                Err(e) => {
+                    log::error!("[DSP] Failed to initialize PureVox model: {e}");
                     self.purevox_load_failed = true;
                     self.apply_rnnoise(data, channels, intensity);
                     return;
                 }
-            } else {
-                self.purevox_load_failed = true;
-                self.apply_rnnoise(data, channels, intensity);
-                return;
             }
         }
         if channels >= 2 && self.purevox_right.is_none() && !self.purevox_load_failed {
-            if let Some(path) = &self.purevox_model_path {
-                if path.exists() {
-                    match PureVoxProcessor::new(path) {
-                        Ok(proc) => {
-                            log::info!("[DSP] PureVox ONNX model loaded (R): {:?}", path);
-                            self.purevox_right = Some(proc);
-                        }
-                        Err(e) => {
-                            log::error!("[DSP] Failed to load PureVox model for R channel: {}", e);
-                        }
-                    }
+            match PureVoxProcessor::new() {
+                Ok(proc) => {
+                    log::info!("[DSP] PureVox native model ready (R, embedded)");
+                    self.purevox_right = Some(proc);
+                }
+                Err(e) => {
+                    log::error!("[DSP] Failed to initialize PureVox model for R channel: {e}");
                 }
             }
         }
@@ -2027,7 +1918,7 @@ mod tests {
         let settings = Arc::new(RwLock::new(AudioDspSettings::default()));
         let mut processor = DspProcessor::new(settings, None);
         processor.aec_session_failed = true;
-        processor.aec_failure = Some(AecFailure::ModelMissing);
+        processor.aec_failure = Some(AecFailure::ModelLoadFailed);
         processor.far_end.feed(&vec![1.0; AEC_HOP_LEN]);
 
         processor.reset_aec_session();
@@ -2174,5 +2065,131 @@ mod tests {
         assert!(!settings.aec_enabled);
         assert!(settings.ns_enabled);
         assert_eq!(settings.gain, 6.0);
+    }
+}
+
+// ─── Native model property tests ──────────────────────────────────────────
+// Exact golden/parity verification of the embedded blobs lives in the
+// libmicyou experimental repository (see docs/pure-rust-inference.md); the
+// tests here are fixture-free behavioural properties of the integration.
+
+#[cfg(all(test, feature = "noise-suppression"))]
+mod native_tests {
+    use super::*;
+
+    /// Deterministic LCG so property tests need no rand dependency.
+    struct Lcg(u64);
+    impl Lcg {
+        fn next_f32(&mut self) -> f32 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((self.0 >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0
+        }
+    }
+
+    fn rms(x: &[f32]) -> f32 {
+        (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
+    }
+
+    #[test]
+    fn purevox_suppresses_stationary_noise() {
+        let mut proc = PureVoxProcessor::new().expect("PureVoxProcessor must build");
+        let mut rng = Lcg(0x5eed_2026_0927_0001);
+        let hop = 480usize;
+        let warmup = 100usize;
+        let measure = 100usize;
+        let mut out_tail: Vec<f32> = Vec::with_capacity(measure * hop);
+        let mut in_tail: Vec<f32> = Vec::with_capacity(measure * hop);
+        for f in 0..warmup + measure {
+            let frame: Vec<f32> = (0..hop).map(|_| rng.next_f32() * 0.05).collect();
+            let out = proc.process(&frame);
+            if f >= warmup {
+                out_tail.extend_from_slice(&out);
+                in_tail.extend_from_slice(&frame);
+            }
+        }
+        let (r_out, r_in) = (rms(&out_tail), rms(&in_tail));
+        println!(
+            "purevox noise: in_rms={r_in:.5} out_rms={r_out:.5} ratio={}",
+            r_out / r_in
+        );
+        assert!(out_tail.iter().all(|v| v.is_finite()));
+        assert!(
+            r_out < 0.8 * r_in,
+            "stationary noise must be attenuated (ratio {})",
+            r_out / r_in
+        );
+    }
+
+    #[test]
+    fn aec_attenuates_noise_echo() {
+        // Aligned noise-like far-end echo is the model's strong suit (tonal
+        // signals are deliberately treated as possible near-end speech and
+        // only mildly attenuated). Noise echo gets crushed (>20 dB in the
+        // numpy reference), so a loose 0.5 ratio threshold is a robust
+        // wiring+function signal without being flaky.
+        let mut proc = AecProcessor::new().expect("AecProcessor must build");
+        let mut rng = Lcg(0x5eed_2026_0927_0003);
+        let hop = 480usize;
+        let warmup = 150usize;
+        let measure = 50usize;
+        let mut out_tail: Vec<f32> = Vec::with_capacity(measure * hop);
+        let mut mic_tail: Vec<f32> = Vec::with_capacity(measure * hop);
+        for f in 0..warmup + measure {
+            let far: Vec<f32> = (0..hop).map(|_| rng.next_f32() * 0.3).collect();
+            let mic: Vec<f32> = far.iter().map(|v| 0.7 * v).collect();
+            let out = proc.process(&mic, &far).expect("aec frame must succeed");
+            if f >= warmup {
+                out_tail.extend_from_slice(&out);
+                mic_tail.extend_from_slice(&mic);
+            }
+        }
+        let (r_out, r_mic) = (rms(&out_tail), rms(&mic_tail));
+        println!(
+            "aec noise echo: mic_rms={r_mic:.5} out_rms={r_out:.5} ratio={}",
+            r_out / r_mic
+        );
+        assert!(out_tail.iter().all(|v| v.is_finite()));
+        assert!(
+            r_out < 0.5 * r_mic,
+            "aligned noise echo must be attenuated (ratio {})",
+            r_out / r_mic
+        );
+    }
+
+    #[test]
+    fn dsp_processor_chain_smoke() {
+        // Full chain: AEC → PureVox NS through the public DspProcessor API.
+        let mut settings = AudioDspSettings::default();
+        settings.ns_enabled = true;
+        settings.ns_type = "PureVox".to_string();
+        settings.ns_intensity = 100.0;
+        settings.aec_enabled = true;
+        let settings = Arc::new(RwLock::new(settings));
+        let mut dsp = DspProcessor::new(settings, None);
+
+        let mut rng = Lcg(0x5eed_2026_0927_0002);
+        let hop = 480usize;
+        for f in 0..60 {
+            let far: Vec<f32> = (0..hop).map(|_| rng.next_f32() * 0.2).collect();
+            dsp.set_far_end_audio(&far);
+            let mut data: Vec<f32> = (0..hop)
+                .map(|i| far[i] * 0.5 + rng.next_f32() * 0.03)
+                .collect();
+            let (raw, processed) = dsp.process(&mut data, 1, 200.0);
+            assert!(raw.is_finite() && processed.is_finite(), "frame {f}");
+            // accumulation may defer output for partial frames; once flowing,
+            // length must be preserved for 480-aligned inputs
+            if !data.is_empty() {
+                assert_eq!(data.len() % hop, 0, "frame {f}: ragged output");
+                assert!(data.iter().all(|v| v.is_finite()), "frame {f}: NaN/inf");
+            }
+        }
+        assert!(
+            dsp.take_aec_failure().is_none(),
+            "AEC must not fail with embedded model"
+        );
     }
 }

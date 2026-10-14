@@ -31,7 +31,15 @@
 
 use crate::error::{PluginError, PluginResult};
 use crate::plugin::{AudioFrameCtx, PluginInstance, PluginRuntime, ProcessStatus};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+
+/// Consecutive failed frames after which a node is skipped until the plugin
+/// is enabled again (about one second of audio).
+const MAX_CONSECUTIVE_FAILURES: u32 = 50;
+
+/// Per-node DSP callback: node name, interleaved samples, channels, queued ms.
+pub type DspHook = Box<dyn FnMut(&str, &mut Vec<f32>, usize, f64) + Send>;
 
 /// Legacy synthetic chain node name that runs **all** registered plugins.
 /// Must stay in sync with `micyou_audio::dsp::PLUGIN_CHAIN_NODE` (this crate
@@ -53,13 +61,31 @@ pub struct DspNode {
     pub insert_after: Option<String>,
     /// The loaded instance, shared with the plugin manager.
     pub instance: Arc<Mutex<PluginInstance>>,
+    failures: AtomicU32,
+}
+
+impl DspNode {
+    pub fn new(
+        plugin_id: String,
+        first: bool,
+        insert_after: Option<String>,
+        instance: Arc<Mutex<PluginInstance>>,
+    ) -> Self {
+        Self {
+            plugin_id,
+            first,
+            insert_after,
+            instance,
+            failures: AtomicU32::new(0),
+        }
+    }
 }
 
 /// Ordered, thread-safe registry of active DSP plugin nodes.
 pub struct PluginDspRegistry {
     nodes: RwLock<Vec<DspNode>>,
     /// Set when the chain should include the synthetic `"Plugins"` node.
-    active: RwLock<bool>,
+    active: AtomicBool,
 }
 
 impl Default for PluginDspRegistry {
@@ -72,13 +98,13 @@ impl PluginDspRegistry {
     pub fn new() -> Self {
         Self {
             nodes: RwLock::new(Vec::new()),
-            active: RwLock::new(false),
+            active: AtomicBool::new(false),
         }
     }
 
     /// Whether any DSP plugin is registered.
     pub fn is_active(&self) -> bool {
-        self.active.read().map(|g| *g).unwrap_or(false)
+        self.active.load(Ordering::Acquire)
     }
 
     /// Register a node. Keeps plugin-to-plugin ordering stable: `first` nodes
@@ -100,10 +126,7 @@ impl PluginDspRegistry {
                 .cmp(&a.first)
                 .then_with(|| a.plugin_id.cmp(&b.plugin_id))
         });
-        *self
-            .active
-            .write()
-            .map_err(|_| PluginError::Runtime("dsp registry poisoned".into()))? = true;
+        self.active.store(true, Ordering::Release);
         Ok(())
     }
 
@@ -113,10 +136,7 @@ impl PluginDspRegistry {
             .write()
             .map_err(|_| PluginError::Runtime("dsp registry poisoned".into()))?;
         nodes.retain(|n| n.plugin_id != plugin_id);
-        *self
-            .active
-            .write()
-            .map_err(|_| PluginError::Runtime("dsp registry poisoned".into()))? = !nodes.is_empty();
+        self.active.store(!nodes.is_empty(), Ordering::Release);
         Ok(())
     }
 
@@ -135,8 +155,9 @@ impl PluginDspRegistry {
             .unwrap_or_default()
     }
 
-    /// Run a single node (audio-thread context). Node errors are logged and
-    /// skipped — one broken plugin must not take the whole chain down.
+    /// Run a single node (audio-thread context). One broken plugin must not
+    /// take the chain down: a failing node is logged once and, after
+    /// `MAX_CONSECUTIVE_FAILURES` frames in a row, skipped.
     fn run_node(
         node: &DspNode,
         data: &mut Vec<f32>,
@@ -144,9 +165,11 @@ impl PluginDspRegistry {
         sample_rate: u32,
         queued_ms: f64,
     ) {
-        let mut instance = match node.instance.lock() {
-            Ok(i) => i,
-            Err(_) => return,
+        if node.failures.load(Ordering::Relaxed) >= MAX_CONSECUTIVE_FAILURES {
+            return;
+        }
+        let Ok(mut instance) = node.instance.lock() else {
+            return;
         };
         let mut ctx = AudioFrameCtx {
             data,
@@ -155,9 +178,24 @@ impl PluginDspRegistry {
             queued_ms,
         };
         match instance.process_audio(&mut ctx) {
-            Ok(ProcessStatus::Ok) => {}
-            Ok(ProcessStatus::Bypass) => {}
-            Err(e) => log::warn!("[plugins] dsp node {} failed: {e}", node.plugin_id),
+            Ok(ProcessStatus::Ok) => {
+                node.failures.store(0, Ordering::Relaxed);
+                // A NaN from the plugin would stick in every recursive filter
+                // after it.
+                for sample in ctx.data.iter_mut().filter(|s| !s.is_finite()) {
+                    *sample = 0.0;
+                }
+            }
+            Ok(ProcessStatus::Bypass) => node.failures.store(0, Ordering::Relaxed),
+            Err(e) => match node.failures.fetch_add(1, Ordering::Relaxed) + 1 {
+                1 => log::warn!("[plugins] dsp node {} failed: {e}", node.plugin_id),
+                MAX_CONSECUTIVE_FAILURES => log::error!(
+                    "[plugins] dsp node {} failed {MAX_CONSECUTIVE_FAILURES} frames in a row, \
+                     skipping it until the plugin is enabled again: {e}",
+                    node.plugin_id
+                ),
+                _ => {}
+            },
         }
     }
 
@@ -215,7 +253,7 @@ impl PluginDspBridge {
     /// processing-chain node name: the legacy `"Plugins"` node runs every
     /// registered plugin; a `Plugin:<id>` node runs just that plugin.
     /// Cheap when no nodes exist.
-    pub fn hook(&self) -> Box<dyn FnMut(&str, &mut Vec<f32>, usize, f64) + Send> {
+    pub fn hook(&self) -> DspHook {
         let registry = self.registry.clone();
         Box::new(
             move |node: &str, data: &mut Vec<f32>, channels: usize, queued_ms: f64| {
@@ -242,6 +280,7 @@ mod tests {
     struct CountingNode {
         manifest: PluginManifest,
         calls: Arc<AtomicUsize>,
+        fail: bool,
     }
 
     impl PluginRuntime for CountingNode {
@@ -254,6 +293,9 @@ mod tests {
         fn deinit(&mut self) {}
         fn process_audio(&mut self, ctx: &mut AudioFrameCtx<'_>) -> PluginResult<ProcessStatus> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail {
+                return Err(PluginError::Runtime("broken".into()));
+            }
             for sample in ctx.data.iter_mut() {
                 *sample += 1.0;
             }
@@ -273,11 +315,15 @@ mod tests {
     }
 
     fn make_node(id: &str, first: bool, calls: Arc<AtomicUsize>) -> DspNode {
-        DspNode {
-            plugin_id: id.to_string(),
+        make_node_with(id, first, calls, false)
+    }
+
+    fn make_node_with(id: &str, first: bool, calls: Arc<AtomicUsize>, fail: bool) -> DspNode {
+        DspNode::new(
+            id.to_string(),
             first,
-            insert_after: None,
-            instance: Arc::new(Mutex::new(PluginInstance::Wasm(Box::new(CountingNode {
+            None,
+            Arc::new(Mutex::new(PluginInstance::Wasm(Box::new(CountingNode {
                 manifest: PluginManifest {
                     id: id.to_string(),
                     name: id.to_string(),
@@ -296,8 +342,26 @@ mod tests {
                     ..Default::default()
                 },
                 calls,
+                fail,
             })))),
+        )
+    }
+
+    #[test]
+    fn failing_node_is_skipped_after_consecutive_failures() {
+        let registry = PluginDspRegistry::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        registry
+            .register(make_node_with("a.broken", false, calls.clone(), true))
+            .unwrap();
+        let mut data = vec![0.0f32; 4];
+        for _ in 0..MAX_CONSECUTIVE_FAILURES * 2 {
+            registry.process_all(&mut data, 1, 48_000, 0.0);
         }
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            MAX_CONSECUTIVE_FAILURES as usize
+        );
     }
 
     #[test]

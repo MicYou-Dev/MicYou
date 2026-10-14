@@ -2,8 +2,9 @@
 import { useI18n } from 'vue-i18n';
 import PluginDetailsDialog from './PluginDetailsDialog.vue';
 import PluginMarketDialog from './PluginMarketDialog.vue';
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { ref, computed, onMounted, watch } from 'vue';
+import { appWindow, type PluginView } from '@/platform';
+import { useListeners } from '@/shared/lib/listeners';
 import {
   RefreshCw,
   Puzzle,
@@ -16,7 +17,7 @@ import {
   Store,
   Search,
 } from '@lucide/vue';
-import { usePlugins, type PluginView } from '../composables/usePlugins';
+import { usePlugins } from '../composables/usePlugins';
 
 // 可复用的插件管理面板：用于设置对话框的「插件」页面
 // 首次挂载即拉取插件列表（单例状态，两个入口共享）
@@ -48,33 +49,27 @@ function displayDescription(plugin: {
 }
 
 const dragOver = ref(false);
-let unlistenDragDrop: (() => void) | null = null;
+const track = useListeners();
 
 onMounted(async () => {
   p.refresh();
   // 拖拽插件文件夹 / .zip 上传（对应文案「把插件文件夹或 .zip 放进来」）
   try {
-    const win = getCurrentWebviewWindow();
-    unlistenDragDrop = await win.onDragDropEvent((event) => {
-      const type = event.payload.type;
-      if (type === 'enter' || type === 'over') {
+    await track(appWindow.onFileDrop((event) => {
+      if (event.type === 'enter' || event.type === 'over') {
         dragOver.value = true;
-      } else if (type === 'leave') {
+      } else if (event.type === 'leave') {
         dragOver.value = false;
-      } else if (type === 'drop') {
+      } else {
         dragOver.value = false;
-        for (const path of event.payload.paths) {
+        for (const path of event.paths) {
           void p.importFromPath(path);
         }
       }
-    });
+    }));
   } catch (e) {
     console.error('Failed to listen drag-drop:', e);
   }
-});
-
-onUnmounted(() => {
-  unlistenDragDrop?.();
 });
 
 const uiConfigs = ref<Record<string, Record<string, unknown>>>({});
@@ -167,7 +162,7 @@ async function applyUpdate(id: string) {
     <!-- 拖拽悬停提示：把插件文件夹或 .zip 放进来 -->
     <div
       v-if="dragOver"
-      class="absolute inset-0 z-20 rounded-xl bg-primary/10 backdrop-blur-sm border-2 border-dashed border-primary flex items-center justify-center pointer-events-none"
+      class="absolute inset-0 z-20 rounded-xl bg-primary/10 backdrop-blur-xs border-2 border-dashed border-primary flex items-center justify-center pointer-events-none"
     >
       <span class="text-sm font-bold text-primary">{{ $t('plugins.installHint') }}</span>
     </div>
@@ -285,7 +280,7 @@ async function applyUpdate(id: string) {
           v-model="searchQuery"
           type="text"
           :placeholder="$t('plugins.search')"
-          class="w-full h-10 pl-9 pr-3 rounded-full bg-surface-variant/20 text-sm text-on-surface outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary/40"
+          class="w-full h-10 pl-9 pr-3 rounded-full bg-surface-variant/20 text-sm text-on-surface outline-hidden placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary/40"
         />
       </div>
       <p

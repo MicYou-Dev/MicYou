@@ -32,9 +32,9 @@ use crate::host::HostApi;
 use crate::host::PluginLogLevel;
 use crate::manifest::PluginManifest;
 use crate::plugin::{AudioFrameCtx, PluginEvent, PluginInstance, PluginRuntime, ProcessStatus};
+use std::cell::Cell;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::Mutex;
 use wasmi::{
     Config, Engine, Instance, Linker, Memory, Module, Store, TypedFunc, WasmParams, WasmResults,
 };
@@ -51,7 +51,7 @@ pub struct WasmHostCtx {
     pub capabilities: Vec<String>,
     /// 宿主端复用缓冲区（audio_state / connected_devices 高频路径避免 bump 泄漏）
     /// (ptr, capacity)；容量不足时重新分配（罕见，泄漏一次）
-    pub scratch: Mutex<Option<(i32, i32)>>,
+    pub scratch: Cell<Option<(i32, i32)>>,
 }
 
 impl WasmHostCtx {
@@ -63,6 +63,12 @@ impl WasmHostCtx {
                 "plugin lacks capability {capability}"
             )))
         }
+    }
+
+    /// `require` for host functions: a missing capability traps the call.
+    fn check(&self, capability: &str) -> Result<(), wasmi::Error> {
+        self.require(capability)
+            .map_err(|e| wasmi::Error::new(e.to_string()))
     }
 }
 
@@ -87,9 +93,6 @@ pub struct WasmPlugin {
     /// and reuses the same region for every frame.
     frame_buf: Option<(i32, usize)>,
 }
-
-// wasmi Store<T> is Send when T is Send; our ctx is an Arc + Vec.
-unsafe impl Send for WasmPlugin {}
 
 impl WasmPlugin {
     /// Load + instantiate a WASM module from `<plugin_dir>/<manifest.entry>`.
@@ -128,7 +131,7 @@ impl WasmPlugin {
         let ctx = WasmHostCtx {
             host,
             capabilities: manifest.capabilities.clone(),
-            scratch: Mutex::new(None),
+            scratch: Cell::new(None),
         };
         let mut store = Store::new(&engine, ctx);
 
@@ -178,18 +181,8 @@ impl WasmPlugin {
         self.store
             .set_fuel(CALL_FUEL_BUDGET)
             .map_err(|e| PluginError::Runtime(format!("set fuel: {e}")))?;
-        let result = f(self);
-        // Fuel < 0 means the budget was exhausted mid-call.
-        if result.is_ok() {
-            if let Ok(fuel) = self.store.get_fuel() {
-                if fuel == 0 {
-                    return Err(PluginError::Runtime(
-                        "wasm fuel exhausted (plugin consumed its execution budget)".into(),
-                    ));
-                }
-            }
-        }
-        result
+        // Running out traps the call, which `f` reports as an error.
+        f(self)
     }
 
     /// Write a NUL-terminated string into plugin memory; returns its address.
@@ -211,25 +204,7 @@ impl WasmPlugin {
 
     /// Read a NUL-terminated string from plugin memory (test/debug helper).
     pub fn read_str(&mut self, ptr: i32) -> PluginResult<String> {
-        // 0 is a valid linear-memory address (plugin statics may live there);
-        // only negative pointers mean "no string".
-        if ptr < 0 {
-            return Ok(String::new());
-        }
-        let mut bytes: Vec<u8> = Vec::new();
-        let mut offset = ptr as usize;
-        let mut one = [0u8; 1];
-        loop {
-            self.memory
-                .read(&mut self.store, offset, &mut one)
-                .map_err(|e| PluginError::Runtime(format!("read string: {e}")))?;
-            if one[0] == 0 {
-                break;
-            }
-            bytes.push(one[0]);
-            offset += 1;
-        }
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+        read_c_str(self.memory.data(&self.store), ptr).map_err(PluginError::Runtime)
     }
 
     /// Expose the wasmi store mutably (test/debug helper).
@@ -300,6 +275,14 @@ where
     Ok(instance.get_typed_func(store, name).ok())
 }
 
+/// The `len` bytes at `ptr`, if the plugin's allocation lies inside memory.
+fn frame_slice(memory: &mut [u8], ptr: i32, len: usize) -> PluginResult<&mut [u8]> {
+    usize::try_from(ptr)
+        .ok()
+        .and_then(|start| memory.get_mut(start..start.checked_add(len)?))
+        .ok_or_else(|| PluginError::Runtime("frame buffer outside plugin memory".into()))
+}
+
 fn result_from_wasm_code(code: i32, context: &str) -> PluginResult<()> {
     match code {
         0 => Ok(()),
@@ -327,9 +310,15 @@ impl PluginRuntime for WasmPlugin {
     }
 
     fn deinit(&mut self) {
-        if let Some(f_deinit) = &self.f_deinit {
-            let _ = f_deinit.call(&mut self.store, ());
-        }
+        let Some(f_deinit) = self.f_deinit else {
+            return;
+        };
+        // Fresh budget: whatever the last call left may be too little.
+        let _ = self.with_fuel(|this| {
+            f_deinit
+                .call(&mut this.store, ())
+                .map_err(|e| PluginError::Runtime(format!("deinit: {e}")))
+        });
     }
 
     fn process_audio(&mut self, ctx: &mut AudioFrameCtx<'_>) -> PluginResult<ProcessStatus> {
@@ -340,14 +329,9 @@ impl PluginRuntime for WasmPlugin {
             return Ok(ProcessStatus::Bypass);
         }
         self.with_fuel(|this| {
-            // f32 → little-endian bytes in plugin memory
-            let mut bytes = Vec::with_capacity(ctx.data.len() * 4);
-            for sample in ctx.data.iter() {
-                bytes.extend_from_slice(&sample.to_le_bytes());
-            }
             // Reuse a cached frame buffer (alloc once; bump allocators never
             // free, so a fresh alloc per frame exhausts linear memory)
-            let need = bytes.len();
+            let need = std::mem::size_of_val(ctx.data);
             let (ptr, _cap) = match this.frame_buf {
                 Some((p, c)) if c >= need => (p, c),
                 _ => {
@@ -362,9 +346,11 @@ impl PluginRuntime for WasmPlugin {
                     (p, need)
                 }
             };
-            this.memory
-                .write(&mut this.store, ptr as usize, &bytes)
-                .map_err(|e| PluginError::Runtime(format!("frame write: {e}")))?;
+            // f32 → little-endian bytes, straight into plugin memory
+            let frame = frame_slice(this.memory.data_mut(&mut this.store), ptr, need)?;
+            for (chunk, sample) in frame.as_chunks_mut::<4>().0.iter_mut().zip(ctx.data.iter()) {
+                *chunk = sample.to_le_bytes();
+            }
             let code = f_process
                 .call(
                     &mut this.store,
@@ -383,12 +369,9 @@ impl PluginRuntime for WasmPlugin {
                 return Ok(ProcessStatus::Bypass);
             }
             result_from_wasm_code(code, "process")?;
-            let mut processed = vec![0u8; bytes.len()];
-            this.memory
-                .read(&mut this.store, ptr as usize, &mut processed)
-                .map_err(|e| PluginError::Runtime(format!("frame read: {e}")))?;
-            for (sample, chunk) in ctx.data.iter_mut().zip(processed.chunks_exact(4)) {
-                *sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let frame = frame_slice(this.memory.data_mut(&mut this.store), ptr, need)?;
+            for (sample, chunk) in ctx.data.iter_mut().zip(frame.as_chunks::<4>().0) {
+                *sample = f32::from_le_bytes(*chunk);
             }
             Ok(ProcessStatus::Ok)
         })
@@ -463,8 +446,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONFIG_READ)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONFIG_READ)?;
                 let memory = export_memory(&caller)?;
                 let key = read_str_from_memory(&mut caller, &memory, key_ptr)?;
                 match caller.data().host.get_config(&key) {
@@ -490,8 +472,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONFIG_WRITE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONFIG_WRITE)?;
                 let memory = export_memory(&caller)?;
                 let key = read_str_from_memory(&mut caller, &memory, key_ptr)?;
                 let value_json = read_str_from_memory(&mut caller, &memory, value_ptr)?;
@@ -518,8 +499,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::EVENT_EMIT)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::EVENT_EMIT)?;
                 let memory = export_memory(&caller)?;
                 let topic = read_str_from_memory(&mut caller, &memory, topic_ptr)?;
                 let payload_json = read_str_from_memory(&mut caller, &memory, payload_ptr)?;
@@ -547,8 +527,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::MESSAGE_SEND)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::MESSAGE_SEND)?;
                 let memory = export_memory(&caller)?;
                 let target_json = read_str_from_memory(&mut caller, &memory, target_ptr)?;
                 let target: crate::host::MessageTarget = serde_json::from_str(&target_json)
@@ -573,8 +552,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |mut caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::AUDIO_STATE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::AUDIO_STATE)?;
                 let memory = export_memory(&caller)?;
                 let json = serde_json::to_string(&caller.data().host.audio_state())
                     .map_err(|e| wasmi::Error::new(format!("serialize: {e}")))?;
@@ -594,8 +572,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::AUDIO_PLAY)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::AUDIO_PLAY)?;
                 let memory = export_memory(&caller)?;
                 let path = read_str_from_memory(&mut caller, &memory, path_ptr)?;
                 caller
@@ -675,8 +652,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |mut caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::DEVICE_LIST)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::DEVICE_LIST)?;
                 let memory = export_memory(&caller)?;
                 let json = serde_json::to_string(&caller.data().host.connected_devices())
                     .map_err(|e| wasmi::Error::new(format!("serialize: {e}")))?;
@@ -696,8 +672,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::FS_READ)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::FS_READ)?;
                 let memory = export_memory(&caller)?;
                 let path = read_str_from_memory(&mut caller, &memory, path_ptr)?;
                 let text = caller
@@ -721,8 +696,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<(), wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::FS_WRITE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::FS_WRITE)?;
                 let memory = export_memory(&caller)?;
                 let path = read_str_from_memory(&mut caller, &memory, path_ptr)?;
                 let content = read_str_from_memory(&mut caller, &memory, content_ptr)?;
@@ -784,8 +758,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<i64, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::NETWORK_IO)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::NETWORK_IO)?;
                 let memory = export_memory(&caller)?;
                 let method = read_str_from_memory(&mut caller, &memory, method_ptr)?;
                 let url = read_str_from_memory(&mut caller, &memory, url_ptr)?;
@@ -847,8 +820,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<(), wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::OPEN_URL)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::OPEN_URL)?;
                 let memory = export_memory(&caller)?;
                 let url = read_str_from_memory(&mut caller, &memory, url_ptr)?;
                 caller
@@ -915,8 +887,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |mut caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CLIPBOARD_READ)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CLIPBOARD_READ)?;
                 let memory = export_memory(&caller)?;
                 let text = caller
                     .data()
@@ -959,8 +930,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
              -> Result<(), wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CLIPBOARD_WRITE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CLIPBOARD_WRITE)?;
                 let memory = export_memory(&caller)?;
                 let text = read_str_from_memory(&mut caller, &memory, text_ptr)?;
                 caller
@@ -977,13 +947,10 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
         .func_wrap(
             WASM_IMPORT_MODULE,
             "set_muted",
-            |caller: wasmi::Caller<'_, WasmHostCtx>,
-             muted: i32|
-             -> Result<i32, wasmi::Error> {
+            |caller: wasmi::Caller<'_, WasmHostCtx>, muted: i32| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_INTERCEPT)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_INTERCEPT)?;
                 caller
                     .data()
                     .host
@@ -1002,8 +969,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_OBSERVE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_OBSERVE)?;
                 let muted = caller
                     .data()
                     .host
@@ -1019,13 +985,10 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
         .func_wrap(
             WASM_IMPORT_MODULE,
             "set_monitoring",
-            |caller: wasmi::Caller<'_, WasmHostCtx>,
-             enabled: i32|
-             -> Result<i32, wasmi::Error> {
+            |caller: wasmi::Caller<'_, WasmHostCtx>, enabled: i32| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_INTERCEPT)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_INTERCEPT)?;
                 caller
                     .data()
                     .host
@@ -1044,8 +1007,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_OBSERVE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_OBSERVE)?;
                 let enabled = caller
                     .data()
                     .host
@@ -1064,8 +1026,7 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
             |mut caller: wasmi::Caller<'_, WasmHostCtx>| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_OBSERVE)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_OBSERVE)?;
                 let text = caller
                     .data()
                     .host
@@ -1082,13 +1043,10 @@ fn register_host_functions(linker: &mut Linker<WasmHostCtx>) {
         .func_wrap(
             WASM_IMPORT_MODULE,
             "set_dsp_settings",
-            |mut caller: wasmi::Caller<'_, WasmHostCtx>,
-             ptr: i32|
-             -> Result<i32, wasmi::Error> {
+            |mut caller: wasmi::Caller<'_, WasmHostCtx>, ptr: i32| -> Result<i32, wasmi::Error> {
                 caller
                     .data()
-                    .require(crate::manifest::capabilities::CONTROL_INTERCEPT)
-                    .map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    .check(crate::manifest::capabilities::CONTROL_INTERCEPT)?;
                 let memory = export_memory(&caller)?;
                 let settings_json = read_str_from_memory(&mut caller, &memory, ptr)?;
                 caller
@@ -1109,28 +1067,28 @@ fn export_memory(caller: &wasmi::Caller<'_, WasmHostCtx>) -> Result<Memory, wasm
         .ok_or_else(|| wasmi::Error::new("memory export missing"))
 }
 
+/// A NUL-terminated string at `ptr` in plugin memory; a negative pointer
+/// means "no string".
+fn read_c_str(memory: &[u8], ptr: i32) -> Result<String, String> {
+    let Ok(start) = usize::try_from(ptr) else {
+        return Ok(String::new());
+    };
+    let tail = memory
+        .get(start..)
+        .ok_or_else(|| format!("read string: pointer {ptr} outside memory"))?;
+    let len = tail
+        .iter()
+        .position(|&b| b == 0)
+        .ok_or("read string: missing NUL terminator")?;
+    Ok(String::from_utf8_lossy(&tail[..len]).into_owned())
+}
+
 fn read_str_from_memory(
     caller: &mut wasmi::Caller<'_, WasmHostCtx>,
     memory: &Memory,
     ptr: i32,
 ) -> Result<String, wasmi::Error> {
-    if ptr < 0 {
-        return Ok(String::new());
-    }
-    let mut bytes: Vec<u8> = Vec::new();
-    let mut offset = ptr as usize;
-    let mut one = [0u8; 1];
-    loop {
-        memory
-            .read(&mut *caller, offset, &mut one)
-            .map_err(|e| wasmi::Error::new(format!("read string: {e}")))?;
-        if one[0] == 0 {
-            break;
-        }
-        bytes.push(one[0]);
-        offset += 1;
-    }
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    read_c_str(memory.data(&*caller), ptr).map_err(wasmi::Error::new)
 }
 
 fn read_bytes_from_memory(
@@ -1149,11 +1107,10 @@ fn read_bytes_from_memory(
     Ok(buf)
 }
 
-/// Allocate + write a NUL-terminated string via the plugin's exported alloc.
-fn write_str_to_memory(
+/// Call the plugin's exported `alloc`.
+fn plugin_alloc(
     caller: &mut wasmi::Caller<'_, WasmHostCtx>,
-    memory: &Memory,
-    text: &str,
+    size: i32,
 ) -> Result<i32, wasmi::Error> {
     let alloc: TypedFunc<(i32,), i32> = caller
         .get_export("alloc")
@@ -1161,16 +1118,33 @@ fn write_str_to_memory(
         .ok_or_else(|| wasmi::Error::new("alloc export missing"))?
         .typed(&mut *caller)
         .map_err(|e| wasmi::Error::new(format!("alloc typed: {e}")))?;
+    alloc
+        .call(&mut *caller, (size,))
+        .map_err(|e| wasmi::Error::new(format!("alloc call: {e}")))
+}
+
+/// Write `text` plus a NUL at `ptr`.
+fn write_c_str(
+    caller: &mut wasmi::Caller<'_, WasmHostCtx>,
+    memory: &Memory,
+    ptr: i32,
+    text: &str,
+) -> Result<(), wasmi::Error> {
     let bytes = text.as_bytes();
-    let ptr = alloc
-        .call(&mut *caller, (bytes.len() as i32 + 1,))
-        .map_err(|e| wasmi::Error::new(format!("alloc call: {e}")))?;
     memory
         .write(&mut *caller, ptr as usize, bytes)
-        .map_err(|e| wasmi::Error::new(format!("write: {e}")))?;
-    memory
-        .write(&mut *caller, ptr as usize + bytes.len(), &[0u8])
-        .map_err(|e| wasmi::Error::new(format!("write NUL: {e}")))?;
+        .and_then(|()| memory.write(&mut *caller, ptr as usize + bytes.len(), &[0u8]))
+        .map_err(|e| wasmi::Error::new(format!("write string: {e}")))
+}
+
+/// Allocate + write a NUL-terminated string via the plugin's exported alloc.
+fn write_str_to_memory(
+    caller: &mut wasmi::Caller<'_, WasmHostCtx>,
+    memory: &Memory,
+    text: &str,
+) -> Result<i32, wasmi::Error> {
+    let ptr = plugin_alloc(caller, text.len() as i32 + 1)?;
+    write_c_str(caller, memory, ptr, text)?;
     Ok(ptr)
 }
 
@@ -1180,45 +1154,16 @@ fn write_scratch(
     memory: &Memory,
     text: &str,
 ) -> Result<i32, wasmi::Error> {
-    let bytes = text.as_bytes();
-    let need = bytes.len() as i32 + 1;
-    // 短借用读取当前 scratch，随后释放锁再分配/写入
-    let current = {
-        let guard = caller
-            .data()
-            .scratch
-            .lock()
-            .map_err(|_| wasmi::Error::new("scratch poisoned"))?;
-        *guard
-    };
-    let (ptr, capacity) = match current {
-        Some((p, c)) if c >= need => (p, c),
+    let need = text.len() as i32 + 1;
+    let ptr = match caller.data().scratch.get() {
+        Some((ptr, capacity)) if capacity >= need => ptr,
         _ => {
-            let cap = need.max(4096);
-            let alloc: TypedFunc<(i32,), i32> = caller
-                .get_export("alloc")
-                .and_then(|e| e.into_func())
-                .ok_or_else(|| wasmi::Error::new("alloc export missing"))?
-                .typed(&mut *caller)
-                .map_err(|e| wasmi::Error::new(format!("alloc typed: {e}")))?;
-            let p = alloc
-                .call(&mut *caller, (cap,))
-                .map_err(|e| wasmi::Error::new(format!("alloc call: {e}")))?;
-            (p, cap)
+            let capacity = need.max(4096);
+            let ptr = plugin_alloc(caller, capacity)?;
+            caller.data().scratch.set(Some((ptr, capacity)));
+            ptr
         }
     };
-    if current.map(|(p, _)| p != ptr).unwrap_or(true) {
-        *caller
-            .data()
-            .scratch
-            .lock()
-            .map_err(|_| wasmi::Error::new("scratch poisoned"))? = Some((ptr, capacity));
-    }
-    memory
-        .write(&mut *caller, ptr as usize, bytes)
-        .map_err(|e| wasmi::Error::new(format!("write: {e}")))?;
-    memory
-        .write(&mut *caller, ptr as usize + bytes.len(), &[0u8])
-        .map_err(|e| wasmi::Error::new(format!("write NUL: {e}")))?;
+    write_c_str(caller, memory, ptr, text)?;
     Ok(ptr)
 }
