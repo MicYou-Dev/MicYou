@@ -144,6 +144,8 @@ fun MobileHome(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val audioLevel by viewModel.audioLevels.collectAsState(initial = 0f)
     val soundPad by viewModel.soundPadState.collectAsState()
+    // SoundPad 面板展开时收起连接配置卡片，把纵向空间让给音效网格
+    val soundPadPanelOpen = soundPad.showPanel && soundPad.available
     
     val snackbarHostState = remember { SnackbarHostState() }
     val isDarkTheme = isDarkThemeActive(state.themeMode)
@@ -219,17 +221,25 @@ fun MobileHome(viewModel: MainViewModel) {
                     )
                 }
 
-                // Connection config
-                AnimatedCardVisibility(
-                    visible = contentVisible,
-                    delayMillis = 150
+                // Connection config（SoundPad 面板展开时收起）
+                AnimatedVisibility(
+                    visible = !soundPadPanelOpen,
+                    enter = expandVertically(animationSpec = tween(300, easing = EasingFunctions.EaseOutExpo))
+                            + fadeIn(animationSpec = tween(220)),
+                    exit = shrinkVertically(animationSpec = tween(220, easing = EasingFunctions.EaseInOutExpo))
+                            + fadeOut(animationSpec = tween(150))
                 ) {
-                    ConnectionConfigCard(
-                        state = state,
-                        viewModel = viewModel,
-                                                cardOpacity = state.backgroundSettings.cardOpacity,
-                        hazeState = hazeState
-                    )
+                    AnimatedCardVisibility(
+                        visible = contentVisible,
+                        delayMillis = 150
+                    ) {
+                        ConnectionConfigCard(
+                            state = state,
+                            viewModel = viewModel,
+                                                    cardOpacity = state.backgroundSettings.cardOpacity,
+                            hazeState = hazeState
+                        )
+                    }
                 }
 
                 // Main control
@@ -249,7 +259,7 @@ fun MobileHome(viewModel: MainViewModel) {
 
                 // SoundPad Panel（桌面端音效板遥控；从底部滑入，沿袭旧版布局）
                 AnimatedVisibility(
-                    visible = soundPad.showPanel && soundPad.available && contentVisible,
+                    visible = soundPadPanelOpen && contentVisible,
                     enter = slideInVertically(
                         initialOffsetY = { it },
                         animationSpec = tween(300, easing = EasingFunctions.EaseOutExpo)
