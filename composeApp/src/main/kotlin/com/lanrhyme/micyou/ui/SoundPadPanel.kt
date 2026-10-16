@@ -52,6 +52,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
@@ -191,16 +192,28 @@ fun SoundPadPanel(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                Spacer(Modifier.width(4.dp))
+                // 文件夹导航：进入子目录后出现返回键（沿袭旧版工具栏）
+                if (soundPad.currentDir.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.soundPadNavigateUp() }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.soundpadBack),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.width(4.dp))
+                }
                 Icon(
-                    Icons.Filled.MusicNote,
+                    if (soundPad.currentDir.isEmpty()) Icons.Filled.MusicNote else Icons.Filled.Folder,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = stringResource(R.string.soundpadLabel),
+                    text = if (soundPad.currentDir.isEmpty()) stringResource(R.string.soundpadLabel)
+                           else soundPad.currentDir.substringAfterLast('/'),
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -223,12 +236,16 @@ fun SoundPadPanel(
                     Spacer(Modifier.width(2.dp))
                 }
                 IconButton(onClick = { viewModel.soundPadRefresh() }, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Filled.Refresh,
-                        contentDescription = stringResource(R.string.soundpadRefresh),
-                        modifier = Modifier.size(17.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (soundPad.refreshing) {
+                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.soundpadRefresh),
+                            modifier = Modifier.size(17.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { viewModel.soundPadStop(null) },
@@ -299,13 +316,35 @@ fun SoundPadPanel(
                     }
                 }
             } else {
+                // 当前目录的直接子文件夹 + 本级音效（文件夹在前，均按名称排序）
+                val prefix = if (soundPad.currentDir.isEmpty()) "" else soundPad.currentDir + "/"
+                val subfolders = remember(soundPad.sounds, soundPad.currentDir) {
+                    soundPad.sounds
+                        .filter { it.dir.startsWith(prefix) && it.dir.length > prefix.length }
+                        .map { prefix + it.dir.removePrefix(prefix).substringBefore('/') }
+                        .distinct()
+                        .sortedBy { it.substringAfterLast('/').lowercase() }
+                }
+                val filesHere = remember(soundPad.sounds, soundPad.currentDir) {
+                    soundPad.sounds
+                        .filter { it.dir == soundPad.currentDir }
+                        .sortedBy { it.displayName.lowercase() }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 108.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
-                    items(soundPad.sounds, key = { it.id }) { sound ->
+                    items(subfolders, key = { "dir:$it" }) { folder ->
+                        val count = soundPad.sounds.count { it.dir == folder || it.dir.startsWith("$folder/") }
+                        SoundPadFolderCard(
+                            name = folder.substringAfterLast('/'),
+                            count = count,
+                            onClick = { viewModel.soundPadEnterFolder(folder) }
+                        )
+                    }
+                    items(filesHere, key = { it.id }) { sound ->
                         val sessionsOfSound = soundPad.sessions.filter { it.soundId == sound.id }
                         val isPlaying = sessionsOfSound.isNotEmpty()
                         val isSelected = selected != null && sessionsOfSound.any { it.sessionId == selected.sessionId }
@@ -476,6 +515,53 @@ private fun SoundPadStatusRow(soundPad: SoundPadUiState) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+// ==================== 文件夹卡片 ====================
+
+@Composable
+private fun SoundPadFolderCard(
+    name: String,
+    count: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minWidth = 108.dp)
+            .height(88.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        ),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = null,
+                modifier = Modifier.size(26.dp)
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = name,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = stringResource(R.string.soundpadFolderCount, count),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            )
+        }
     }
 }
 

@@ -334,6 +334,8 @@ class MainViewModel : ViewModel() {
     fun soundPadSetVolume(sessionId: Long, volume: Float) = soundPadController.setVolume(sessionId, volume)
     fun soundPadSetLoop(sessionId: Long, loop: Boolean) = soundPadController.setLoop(sessionId, loop)
     fun soundPadRefresh() = soundPadController.refreshLibrary()
+    fun soundPadEnterFolder(dir: String) = soundPadController.enterFolder(dir)
+    fun soundPadNavigateUp() = soundPadController.navigateUp()
     fun soundPadSelect(sessionId: Long?) = soundPadController.selectSession(sessionId)
     fun soundPadConsumeError() = soundPadController.consumeError()
 

@@ -403,4 +403,6 @@
     <string name="soundpadStop">Stop</string>
     <string name="soundpadLoop">Loop</string>
     <string name="soundpadVolume">Volume</string>
+    <string name="soundpadBack">Back</string>
+    <string name="soundpadFolderCount">%1$d items</string>
 </resources>

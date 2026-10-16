@@ -56,9 +56,12 @@ val soundPadJson = Json {
 data class SoundPadSound(
     val id: String,
     val label: String = "",
-    val durationMs: Long = 0
+    val durationMs: Long = 0,
+    /** Folder relative to the desktop sounds root ("" = root). */
+    val dir: String = ""
 ) {
-    val displayName: String get() = label.ifBlank { id }
+    /** File-stem display name (id may carry a folder prefix). */
+    val displayName: String get() = label.ifBlank { id.substringAfterLast('/') }
 }
 
 /** Desktop-reported playback session (dto over the wire). */

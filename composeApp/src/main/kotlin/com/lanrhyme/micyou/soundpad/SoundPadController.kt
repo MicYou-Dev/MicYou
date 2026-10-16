@@ -80,6 +80,10 @@ data class SoundPadUiState(
     val sessions: List<SoundPadSession> = emptyList(),
     val showPanel: Boolean = false,
     val selectedSessionId: Long? = null,
+    /** Folder being browsed in the panel ("" = library root). */
+    val currentDir: String = "",
+    /** A `list` request is in flight (toolbar spinner). */
+    val refreshing: Boolean = false,
     /** One-shot error text for a snackbar; cleared via [SoundPadController.consumeError]. */
     val errorMessage: String? = null
 ) {
@@ -110,6 +114,7 @@ class SoundPadController(
 
     private var discoveryJob: Job? = null
     private var tickerJob: Job? = null
+    private var refreshTimeoutJob: Job? = null
 
     init {
         scope.launch {
@@ -142,7 +147,10 @@ class SoundPadController(
         discoveryJob = null
         missedHellos = 0
         _state.update {
-            it.copy(available = false, sessions = emptyList(), selectedSessionId = null)
+            it.copy(
+                available = false, sessions = emptyList(), selectedSessionId = null,
+                currentDir = "", refreshing = false
+            )
         }
     }
 
@@ -191,11 +199,14 @@ class SoundPadController(
                         desktopVersion = env.version,
                         sounds = env.sounds,
                         sessions = env.sessions.map { dto -> SoundPadSession.from(dto, now) },
-                        selectedSessionId = keepSelection(it.selectedSessionId, env.sessions.map { s -> s.sessionId })
+                        selectedSessionId = keepSelection(it.selectedSessionId, env.sessions.map { s -> s.sessionId }),
+                        refreshing = false
                     )
                 }
             }
-            "list" -> _state.update { it.copy(available = true, sounds = env.sounds) }
+            "list" -> _state.update {
+                it.copy(available = true, sounds = env.sounds, refreshing = false)
+            }
             "state" -> applySessions(env.sessions)
             "play" -> {
                 env.session?.let { dto ->
@@ -282,12 +293,16 @@ class SoundPadController(
 
     // ─────────────────────────── public actions ───────────────────────────
 
-    fun play(soundId: String, volume: Float = 1.0f, loop: Boolean = false) {
+    /**
+     * Play a sound. Volume is intentionally omitted so the desktop resolves
+     * its per-sound remembered level (the play reply/state carries the
+     * effective volume back for the slider).
+     */
+    fun play(soundId: String, loop: Boolean = false) {
         send(buildJsonObject {
             put("op", "play")
             put("req", nextReq.getAndIncrement())
             put("id", soundId)
-            put("volume", volume.toDouble())
             put("loop", loop)
         })
     }
@@ -342,12 +357,34 @@ class SoundPadController(
         })
     }
 
-    /** Re-request the sound list (desktop rescans its sounds/ directory). */
+    /** Re-request the sound list (desktop rescans its sounds directory). */
     fun refreshLibrary() {
+        _state.update { it.copy(refreshing = true) }
         send(buildJsonObject {
             put("op", "list")
             put("req", nextReq.getAndIncrement())
         })
+        // Fallback: never leave the spinner stuck when the reply is lost.
+        refreshTimeoutJob?.cancel()
+        refreshTimeoutJob = scope.launch {
+            delay(REFRESH_TIMEOUT_MS)
+            _state.update { it.copy(refreshing = false) }
+        }
+    }
+
+    // ─────────────────────────── folder navigation ───────────────────────────
+
+    /** Browse into a subfolder (path relative to the library root). */
+    fun enterFolder(dir: String) {
+        _state.update { it.copy(currentDir = dir) }
+    }
+
+    /** Up one folder level; no-op at the root. */
+    fun navigateUp() {
+        _state.update {
+            val cur = it.currentDir
+            it.copy(currentDir = if ('/' in cur) cur.substringBeforeLast('/') else "")
+        }
     }
 
     /** Pull a fresh session snapshot (e.g. when the panel opens). */
@@ -386,5 +423,6 @@ class SoundPadController(
         private const val KEEPALIVE_MS = 5_000L
         private const val TICK_MS = 150L
         private const val MAX_MISSED_HELLOS = 3
+        private const val REFRESH_TIMEOUT_MS = 3_000L
     }
 }

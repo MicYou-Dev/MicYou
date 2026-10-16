@@ -403,4 +403,6 @@
     <string name="soundpadStop">停止</string>
     <string name="soundpadLoop">循環</string>
     <string name="soundpadVolume">音量</string>
+    <string name="soundpadBack">返回上層</string>
+    <string name="soundpadFolderCount">%1$d 項</string>
 </resources>
