@@ -80,6 +80,8 @@ data class SoundPadUiState(
     val sessions: List<SoundPadSession> = emptyList(),
     val showPanel: Boolean = false,
     val selectedSessionId: Long? = null,
+    /** VAD anti-collision guard (desktop ducks sounds while you speak). */
+    val vadGuard: Boolean = false,
     /** Folder being browsed in the panel ("" = library root). */
     val currentDir: String = "",
     /** A `list` request is in flight (toolbar spinner). */
@@ -200,6 +202,7 @@ class SoundPadController(
                         sounds = env.sounds,
                         sessions = env.sessions.map { dto -> SoundPadSession.from(dto, now) },
                         selectedSessionId = keepSelection(it.selectedSessionId, env.sessions.map { s -> s.sessionId }),
+                        vadGuard = env.vadGuard,
                         refreshing = false
                     )
                 }
@@ -207,7 +210,7 @@ class SoundPadController(
             "list" -> _state.update {
                 it.copy(available = true, sounds = env.sounds, refreshing = false)
             }
-            "state" -> applySessions(env.sessions)
+            "state" -> applySessions(env.sessions, vadGuard = env.vadGuard)
             "play" -> {
                 env.session?.let { dto ->
                     applySessions(
@@ -226,12 +229,13 @@ class SoundPadController(
         }
     }
 
-    private fun applySessions(dtos: List<SoundPadSessionDto>, select: Long? = null) {
+    private fun applySessions(dtos: List<SoundPadSessionDto>, select: Long? = null, vadGuard: Boolean? = null) {
         val now = SystemClock.elapsedRealtime()
         _state.update {
             it.copy(
                 sessions = dtos.map { dto -> SoundPadSession.from(dto, now) },
-                selectedSessionId = select ?: keepSelection(it.selectedSessionId, dtos.map { d -> d.sessionId })
+                selectedSessionId = select ?: keepSelection(it.selectedSessionId, dtos.map { d -> d.sessionId }),
+                vadGuard = vadGuard ?: it.vadGuard
             )
         }
     }
@@ -344,6 +348,17 @@ class SoundPadController(
             put("req", nextReq.getAndIncrement())
             put("sessionId", sessionId)
             put("volume", volume.toDouble())
+        })
+    }
+
+    /** Toggle the desktop VAD anti-collision guard (ducking while speaking). */
+    fun setVadGuard(enable: Boolean) {
+        // Optimistic: the desktop echoes the authoritative value in `state`.
+        _state.update { it.copy(vadGuard = enable) }
+        send(buildJsonObject {
+            put("op", "vad")
+            put("req", nextReq.getAndIncrement())
+            put("enable", enable)
         })
     }
 

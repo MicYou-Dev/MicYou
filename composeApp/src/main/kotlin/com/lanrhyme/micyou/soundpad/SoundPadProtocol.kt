@@ -93,5 +93,7 @@ data class SoundPadEnvelope(
     val message: String = "",
     val sounds: List<SoundPadSound> = emptyList(),
     val sessions: List<SoundPadSessionDto> = emptyList(),
-    val session: SoundPadSessionDto? = null
+    val session: SoundPadSessionDto? = null,
+    /** VAD anti-collision guard state (ducking while you speak). */
+    val vadGuard: Boolean = false
 )

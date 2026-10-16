@@ -399,7 +399,7 @@
     <string name="soundpadStopAll">全部停止</string>
     <string name="soundpadRefresh">刷新</string>
     <string name="soundpadLoading">解码中…</string>
-    <string name="soundpadCollapse">收起面板</string>
+    <string name="soundpadVadGuard">防撞（说话时音效自动压低）</string>
     <string name="soundpadStop">停止</string>
     <string name="soundpadLoop">循环</string>
     <string name="soundpadVolume">音量</string>

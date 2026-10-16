@@ -399,7 +399,7 @@
     <string name="soundpadStopAll">Stop all</string>
     <string name="soundpadRefresh">Refresh</string>
     <string name="soundpadLoading">Decoding…</string>
-    <string name="soundpadCollapse">Collapse panel</string>
+    <string name="soundpadVadGuard">Voice guard (duck sounds while speaking)</string>
     <string name="soundpadStop">Stop</string>
     <string name="soundpadLoop">Loop</string>
     <string name="soundpadVolume">Volume</string>

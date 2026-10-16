@@ -60,7 +60,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -180,18 +180,12 @@ fun SoundPadPanel(
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxSize()) {
 
-            // === 工具栏：收起 / 标题 / 刷新 / 全部停止 ===
+            // === 工具栏：返回 / 标题 / 防撞开关 / 全部停止 ===
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { viewModel.toggleSoundPadPanel() }, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = stringResource(R.string.soundpadCollapse),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                // 面板仅通过再次点击底部栏 SoundPad 按钮收起（无收起钮）
                 // 文件夹导航：进入子目录后出现返回键（沿袭旧版工具栏）
                 if (soundPad.currentDir.isNotEmpty()) {
                     IconButton(onClick = { viewModel.soundPadNavigateUp() }, modifier = Modifier.size(32.dp)) {
@@ -202,7 +196,7 @@ fun SoundPadPanel(
                         )
                     }
                 } else {
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(8.dp))
                 }
                 Icon(
                     if (soundPad.currentDir.isEmpty()) Icons.Filled.MusicNote else Icons.Filled.Folder,
@@ -235,17 +229,15 @@ fun SoundPadPanel(
                     )
                     Spacer(Modifier.width(2.dp))
                 }
-                IconButton(onClick = { viewModel.soundPadRefresh() }, modifier = Modifier.size(32.dp)) {
-                    if (soundPad.refreshing) {
-                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.soundpadRefresh),
-                            modifier = Modifier.size(17.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                // 防撞开关（VAD Ducking）：说话时桌面端把音效压低到 20%
+                IconButton(onClick = { viewModel.soundPadSetVadGuard(!soundPad.vadGuard) }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Rounded.RecordVoiceOver,
+                        contentDescription = stringResource(R.string.soundpadVadGuard),
+                        modifier = Modifier.size(18.dp),
+                        tint = if (soundPad.vadGuard) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 IconButton(
                     onClick = { viewModel.soundPadStop(null) },
