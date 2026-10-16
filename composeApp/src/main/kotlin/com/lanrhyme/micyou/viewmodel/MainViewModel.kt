@@ -33,6 +33,8 @@ import com.lanrhyme.micyou.network.DiscoveredDevice
 import com.lanrhyme.micyou.settings.Settings
 import com.lanrhyme.micyou.settings.SettingsFactory
 import com.lanrhyme.micyou.settings.SettingsViewModel
+import com.lanrhyme.micyou.soundpad.SoundPadController
+import com.lanrhyme.micyou.soundpad.SoundPadUiState
 import com.lanrhyme.micyou.theme.ThemeMode
 import com.lanrhyme.micyou.ui.background.BackgroundSettings
 import com.lanrhyme.micyou.update.UpdateCheckResult
@@ -142,6 +144,11 @@ class MainViewModel : ViewModel() {
     private val settingsViewModel = SettingsViewModel()
 
     private val updateViewModel = UpdateViewModel()
+
+    // Soundpad remote control (desktop opss.soundpad plugin); rides the
+    // AudioEngine control channel, so it must be created after it.
+    private val soundPadController = SoundPadController(audioStreamViewModel.audioEngine, viewModelScope)
+    val soundPadState: StateFlow<SoundPadUiState> = soundPadController.state
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -318,6 +325,17 @@ class MainViewModel : ViewModel() {
     fun clearInstallMessage() {
         _uiState.update { it.copy(installMessage = null) }
     }
+
+    // Soundpad methods (delegate to SoundPadController)
+    fun toggleSoundPadPanel() = soundPadController.togglePanel()
+    fun soundPadPlay(soundId: String) = soundPadController.play(soundId)
+    fun soundPadStop(sessionId: Long? = null) = soundPadController.stop(sessionId)
+    fun soundPadSeek(sessionId: Long, positionMs: Long) = soundPadController.seek(sessionId, positionMs)
+    fun soundPadSetVolume(sessionId: Long, volume: Float) = soundPadController.setVolume(sessionId, volume)
+    fun soundPadSetLoop(sessionId: Long, loop: Boolean) = soundPadController.setLoop(sessionId, loop)
+    fun soundPadRefresh() = soundPadController.refreshLibrary()
+    fun soundPadSelect(sessionId: Long?) = soundPadController.selectSession(sessionId)
+    fun soundPadConsumeError() = soundPadController.consumeError()
 
     override fun onCleared() {
         audioStreamViewModel.close()

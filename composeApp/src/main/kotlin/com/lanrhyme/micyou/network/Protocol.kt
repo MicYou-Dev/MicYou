@@ -121,6 +121,68 @@ data class PongMessage(
     val timestamp: Long
 )
 
+/**
+ * Cross-device plugin message, mirroring `micyou.PluginMessage` in
+ * micyou-protocol/proto/network.proto (MessageWrapper field 7).
+ *
+ * Carries plugin-bus traffic between the phone and desktop plugins (e.g. the
+ * Soundpad remote control). `correlationId` pairs requests with responses on
+ * the host bus (0 = one-way); `target` empty = broadcast; `errorCode` mirrors
+ * the plugin error codes (0 = ok). Payload semantics are defined by the
+ * plugins themselves — the app routes on `source`/`target` only.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class PluginMessage(
+    @ProtoNumber(1)
+    val source: String = "",
+    @ProtoNumber(2)
+    val target: String = "",
+    @ProtoNumber(3)
+    val topic: String = "",
+    @ProtoNumber(4)
+    val payload: ByteArray = ByteArray(0),
+    // uint64 on the wire; correlation ids stay well below Long.MAX in practice.
+    @ProtoNumber(5)
+    val correlationId: Long = 0,
+    @ProtoNumber(6)
+    val isResponse: Boolean = false,
+    @ProtoNumber(7)
+    val errorCode: Int = 0,
+    @ProtoNumber(8)
+    val errorMessage: String = ""
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as PluginMessage
+
+        if (source != other.source) return false
+        if (target != other.target) return false
+        if (topic != other.topic) return false
+        if (!payload.contentEquals(other.payload)) return false
+        if (correlationId != other.correlationId) return false
+        if (isResponse != other.isResponse) return false
+        if (errorCode != other.errorCode) return false
+        if (errorMessage != other.errorMessage) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = source.hashCode()
+        result = 31 * result + target.hashCode()
+        result = 31 * result + topic.hashCode()
+        result = 31 * result + payload.contentHashCode()
+        result = 31 * result + correlationId.hashCode()
+        result = 31 * result + isResponse.hashCode()
+        result = 31 * result + errorCode
+        result = 31 * result + errorMessage.hashCode()
+        return result
+    }
+}
+
 // TCP handshake strings, matching HANDSHAKE_CLIENT_STR / HANDSHAKE_SERVER_STR in micyou-protocol
 const val HANDSHAKE_CLIENT = "MicYouCheck1"
 const val HANDSHAKE_SERVER = "MicYouCheck2"
@@ -158,7 +220,7 @@ fun calculateUdpPort(tcpPort: Int): Int {
 
 /** 判断 MessageWrapper 是否包含控制消息（应通过 TCP 发送） */
 fun MessageWrapper.hasControlMessage(): Boolean {
-    return connect != null || mute != null || ping != null || pong != null
+    return connect != null || mute != null || ping != null || pong != null || pluginMessage != null
 }
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -173,5 +235,9 @@ data class MessageWrapper(
     @ProtoNumber(5)
     val ping: PingMessage? = null,
     @ProtoNumber(6)
-    val pong: PongMessage? = null
+    val pong: PongMessage? = null,
+    // Cross-device plugin messaging (micyou-protocol network.proto field 7).
+    // proto3 skips unknown fields, so legacy desktops simply ignore it.
+    @ProtoNumber(7)
+    val pluginMessage: PluginMessage? = null
 )
