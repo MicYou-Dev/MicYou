@@ -229,15 +229,34 @@ fun SoundPadPanel(
                     )
                     Spacer(Modifier.width(2.dp))
                 }
-                // 防撞开关（VAD Ducking）：说话时桌面端把音效压低到 20%
-                IconButton(onClick = { viewModel.soundPadSetVadGuard(!soundPad.vadGuard) }, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Rounded.RecordVoiceOver,
-                        contentDescription = stringResource(R.string.soundpadVadGuard),
-                        modifier = Modifier.size(18.dp),
-                        tint = if (soundPad.vadGuard) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                // 防撞开关（VAD Ducking）：说话时桌面端把音效压低到 20%；
+                // 图标右侧带文字状态（防撞启用/防撞禁用）
+                run {
+                    val vadColor = if (soundPad.vadGuard) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { viewModel.soundPadSetVadGuard(!soundPad.vadGuard) }
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.RecordVoiceOver,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = vadColor
+                        )
+                        Text(
+                            text = stringResource(
+                                if (soundPad.vadGuard) R.string.soundpadVadOn else R.string.soundpadVadOff
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = vadColor,
+                            maxLines = 1
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { viewModel.soundPadStop(null) },
