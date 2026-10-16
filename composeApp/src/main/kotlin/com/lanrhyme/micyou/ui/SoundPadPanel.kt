@@ -344,7 +344,9 @@ fun SoundPadPanel(
                         .sortedBy { it.displayName.lowercase() }
                 }
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 160.dp),
+                    // 145dp：360dp 手机（内容宽 ~304dp）稳定 2 列；平板（~744dp）保持
+                    // 4 列不变（与 160dp 时相同）；412dp 手机 → 2 列宽卡
+                    columns = GridCells.Adaptive(minSize = 145.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 8.dp)
@@ -477,7 +479,9 @@ private fun SoundPadTransportRow(
                 )
             }
 
-            if (maxWidth >= 300.dp) {
+            // 400dp：手机竖屏（面板内容宽 ≈304-356dp）走两行拆分；
+            // 平板/横屏/折叠屏内屏走旧版单行。
+            if (maxWidth >= 400.dp) {
                 // ── 宽：单行（旧版参数：44dp 时间 + 1f 进度 + 44dp 时长
                 //    + 36dp 音量图标 + 0.6f 音量 + 32dp 循环）──
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -579,7 +583,7 @@ private fun SoundPadFolderCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minWidth = 160.dp, minHeight = 100.dp)
+            .defaultMinSize(minWidth = 140.dp, minHeight = 100.dp)
             .height(100.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -649,7 +653,7 @@ private fun SoundPadItemCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minWidth = 160.dp, minHeight = 100.dp)
+            .defaultMinSize(minWidth = 140.dp, minHeight = 100.dp)
             .height(100.dp),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
