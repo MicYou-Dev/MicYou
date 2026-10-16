@@ -36,9 +36,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -342,9 +344,9 @@ fun SoundPadPanel(
                         .sortedBy { it.displayName.lowercase() }
                 }
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 108.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    columns = GridCells.Adaptive(minSize = 160.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
                     items(subfolders, key = { "dir:$it" }) { folder ->
@@ -429,68 +431,104 @@ private fun SoundPadTransportRow(
                 )
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = formatSoundPadTime((displayProgress * duration).toLong()),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(40.dp)
-            )
-            Slider(
-                value = displayProgress,
-                onValueChange = { localDragProgress = it },
-                onValueChangeFinished = {
-                    localDragProgress?.let {
-                        viewModel.soundPadSeek(session.sessionId, (it * duration).toLong())
-                    }
-                    localDragProgress = null
-                },
-                modifier = Modifier.weight(1f).height(28.dp).padding(horizontal = 4.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                )
-            )
-            Text(
-                text = formatSoundPadTime(session.durationMs),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(40.dp)
-            )
-            IconButton(
-                onClick = { viewModel.soundPadSetLoop(session.sessionId, !session.loop) },
-                modifier = Modifier.size(30.dp)
-            ) {
-                Icon(
-                    if (session.loop) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
-                    contentDescription = stringResource(R.string.soundpadLoop),
-                    modifier = Modifier.size(17.dp),
-                    tint = if (session.loop) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+        // 旧版单行布局：宽度充足时 进度条(weight 1f) 与 音量条(weight 0.6f)
+        // 同排、循环钮收尾；窄屏拆两行——进度条独占一行，音量条+循环钮一行。
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val progressSlider: @Composable RowScope.() -> Unit = {
+                Slider(
+                    value = displayProgress,
+                    onValueChange = { localDragProgress = it },
+                    onValueChangeFinished = {
+                        localDragProgress?.let {
+                            viewModel.soundPadSeek(session.sessionId, (it * duration).toLong())
+                        }
+                        localDragProgress = null
+                    },
+                    modifier = Modifier.weight(1f).height(30.dp).padding(horizontal = 4.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    )
                 )
             }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Filled.VolumeUp,
-                contentDescription = stringResource(R.string.soundpadVolume),
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Slider(
-                value = displayVolume.coerceIn(0f, 1f),
-                onValueChange = { localDragVolume = it },
-                onValueChangeFinished = {
-                    localDragVolume?.let { viewModel.soundPadSetVolume(session.sessionId, it) }
-                    localDragVolume = null
-                },
-                modifier = Modifier.weight(1f).height(28.dp).padding(horizontal = 8.dp)
-            )
-            Text(
-                text = "${(displayVolume * 100).toInt()}%",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.width(40.dp),
-                textAlign = TextAlign.End
-            )
+            val loopButton: @Composable () -> Unit = {
+                IconButton(
+                    onClick = { viewModel.soundPadSetLoop(session.sessionId, !session.loop) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        if (session.loop) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                        contentDescription = stringResource(R.string.soundpadLoop),
+                        tint = if (session.loop) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            val volumeSlider: @Composable RowScope.(Float) -> Unit = { w ->
+                Slider(
+                    value = displayVolume.coerceIn(0f, 1f),
+                    onValueChange = { localDragVolume = it },
+                    onValueChangeFinished = {
+                        localDragVolume?.let { viewModel.soundPadSetVolume(session.sessionId, it) }
+                        localDragVolume = null
+                    },
+                    modifier = Modifier.weight(w).height(30.dp).padding(horizontal = 4.dp)
+                )
+            }
+
+            if (maxWidth >= 300.dp) {
+                // ── 宽：单行（旧版参数：44dp 时间 + 1f 进度 + 44dp 时长
+                //    + 36dp 音量图标 + 0.6f 音量 + 32dp 循环）──
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = formatSoundPadTime((displayProgress * duration).toLong()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(44.dp)
+                    )
+                    progressSlider()
+                    Text(
+                        text = formatSoundPadTime(session.durationMs),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.width(44.dp)
+                    )
+                    Icon(
+                        Icons.Filled.VolumeUp,
+                        contentDescription = stringResource(R.string.soundpadVolume),
+                        modifier = Modifier.size(36.dp).padding(start = 8.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    volumeSlider(0.6f)
+                    loopButton()
+                }
+            } else {
+                // ── 窄：两行，进度条独占一行；循环钮在音量行 ──
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = formatSoundPadTime((displayProgress * duration).toLong()),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.width(44.dp)
+                        )
+                        progressSlider()
+                        Text(
+                            text = formatSoundPadTime(session.durationMs),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.width(44.dp)
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.VolumeUp,
+                            contentDescription = stringResource(R.string.soundpadVolume),
+                            modifier = Modifier.size(36.dp).padding(start = 8.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        volumeSlider(1f)
+                        loopButton()
+                    }
+                }
+            }
         }
     }
 }
@@ -541,8 +579,8 @@ private fun SoundPadFolderCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minWidth = 108.dp)
-            .height(88.dp),
+            .defaultMinSize(minWidth = 160.dp, minHeight = 100.dp)
+            .height(100.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -557,12 +595,12 @@ private fun SoundPadFolderCard(
             Icon(
                 imageVector = Icons.Filled.Folder,
                 contentDescription = null,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(36.dp)
             )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = name,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
@@ -611,8 +649,8 @@ private fun SoundPadItemCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minWidth = 108.dp)
-            .height(88.dp),
+            .defaultMinSize(minWidth = 160.dp, minHeight = 100.dp)
+            .height(100.dp),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
@@ -628,12 +666,12 @@ private fun SoundPadItemCard(
                 Icon(
                     imageVector = Icons.Filled.MusicNote,
                     contentDescription = null,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(36.dp)
                 )
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = sound.displayName,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
@@ -645,7 +683,7 @@ private fun SoundPadItemCard(
                 )
                 // 播放状态指示器（呼吸灯）
                 if (isPlaying) {
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(2.dp))
                     val infiniteTransition = rememberInfiniteTransition(label = "soundpadPulse")
                     val alpha by infiniteTransition.animateFloat(
                         initialValue = 0.3f,
