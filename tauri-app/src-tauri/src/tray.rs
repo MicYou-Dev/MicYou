@@ -105,14 +105,25 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let state = *ctx.state.lock().unwrap_or_else(|p| p.into_inner());
 
     let menu = build_menu(app, &strings, state)?;
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?;
+
+    // macOS wants a monochrome template image in the menu bar so the icon takes on the
+    // bar's tint, while the other platforms keep the coloured application icon.
+    #[cfg(target_os = "macos")]
+    let (icon, icon_is_template) = (
+        tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-template.png"))?,
+        true,
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (icon, icon_is_template) = (
+        app.default_window_icon()
+            .cloned()
+            .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?,
+        false,
+    );
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .icon_as_template(false)
+        .icon_as_template(icon_is_template)
         .tooltip(&strings.tooltip)
         .menu(&menu)
         .show_menu_on_left_click(true)
@@ -129,7 +140,9 @@ pub fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                         log::error!(target: "tray", "failed to forward tray action {id}: {e}");
                     }
                 }
-                other => log::warn!(target: "tray", "unknown menu id: {other}"),
+                // The app menu bar shares this handler (Tauri installs one global
+                // menu listener), so its `menu:` ids land here too.
+                other => log::debug!(target: "tray", "unknown menu id: {other}"),
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -296,6 +309,20 @@ mod tests {
             ),
             "Start"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_menu_bar_icon_is_a_square_retina_template() {
+        // The tray layer gives every tray image an 18pt height and keeps the aspect
+        // ratio, so a non-square asset would render distorted, and the pixel count is
+        // the only thing standing in for Retina detail (18pt needs 36px at 2x).
+        let icon = tauri::image::Image::from_bytes(include_bytes!(
+            "../icons/tray-icon-template.png"
+        ))
+        .expect("the committed menu bar icon must decode");
+        assert_eq!(icon.width(), icon.height());
+        assert!(icon.width() >= 36, "got {}px", icon.width());
     }
 
     #[test]

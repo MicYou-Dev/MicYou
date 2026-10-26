@@ -125,11 +125,10 @@ pub fn cmd_settings_set(key: String, value: String) -> Result<(), String> {
         }
     }
     settings = serde_json::from_value(current).map_err(|e| e.to_string())?;
-    if key == "aecEnabled"
-        && settings.aec_enabled
-        && !micyou_core::settings::aec_supported()
-    {
-        return Err("AEC is not supported on macOS".to_string());
+    if key == "aecEnabled" && settings.aec_enabled {
+        if let Some(reason) = micyou_core::micyou_audio::aec_reference_availability().reason {
+            return Err(format!("AEC is unavailable: {}", reason.as_str()));
+        }
     }
     config::save_dsp_settings(&settings)?;
     println!("{key} = {value}");

@@ -22,5 +22,11 @@ nnnoiseless = { version = "0.5.2", optional = true }
 micyou-infer = { workspace = true, optional = true }
 rustfft = { version = "6.4.1", optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Core Audio process taps need Objective-C runtime access and a CoreFoundation
+# dictionary for the aggregate device description.
+objc = "0.2"
+core-foundation = "0.10"
+
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.25"

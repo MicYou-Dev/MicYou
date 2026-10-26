@@ -12,6 +12,15 @@ watch(currentLanguage, (language) => {
   saveUiPrefs(language);
 });
 
+// The macOS app menu lives in the main window, so a language picked there has to
+// reach this one. `storage` never fires in the window that wrote the value, which
+// is what makes this the only place the two windows can meet.
+window.addEventListener('storage', (event) => {
+  if (event.key !== 'micyou_language') return;
+  const next = event.newValue;
+  if (next && isLocale(next) && next !== currentLanguage.value) currentLanguage.value = next;
+});
+
 /** The language setting: "system" or a locale key. */
 export function useLanguageSetting() {
   return {

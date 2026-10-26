@@ -18,6 +18,10 @@
     ]
   },
   "bundle": {
+    "resources": [
+      "resources/*",
+      "resources/alsa/*"
+    ],
     "linux": {
       "deb": {
         "desktopTemplate": "packaging/micyou.desktop.hbs"

@@ -32,12 +32,6 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-/// Whether this platform has a speaker loopback path for the AEC far-end
-/// reference (macOS does not).
-pub const fn aec_supported() -> bool {
-    !cfg!(target_os = "macos")
-}
-
 /// Names of the output devices cpal can open, sorted and deduplicated.
 pub fn audio_devices() -> Vec<String> {
     let mut names: Vec<String> = match cpal::default_host().output_devices() {
@@ -198,8 +192,10 @@ impl Controls {
             .dsp_settings
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if settings.aec_enabled && !current.aec_enabled && !aec_supported() {
-            return Err("AEC is not supported on macOS".to_string());
+        if settings.aec_enabled && !current.aec_enabled {
+            if let Some(reason) = micyou_audio::aec_reference_availability().reason {
+                return Err(reason.as_str().to_string());
+            }
         }
         crate::config::save_dsp_settings(&settings)
             .map_err(|e| format!("Failed to persist settings: {e}"))?;

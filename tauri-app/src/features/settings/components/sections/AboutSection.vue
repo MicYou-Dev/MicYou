@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useStorage } from '@vueuse/core';
 import {
@@ -23,12 +23,26 @@ import ContributorsDialog from '../ContributorsDialog.vue';
 // The bundled license texts are ~400 kB: load them in their own chunk.
 const LicensesDialog = defineAsyncComponent(() => import('../LicensesDialog.vue'));
 import SponsorsDialog from '../SponsorsDialog.vue';
+import { sponsorsRequested } from '../../composables/useSettingsRequest';
 
 const { t, locale } = useI18n();
 
 const showContributors = ref(false);
 const showSponsors = ref(false);
 const showLicenses = ref(false);
+
+// The macOS app menu asks for the sponsors dialog from the main window; this
+// section is only mounted once it is on screen, so the request is consumed here
+// (immediately covers the mount that the request itself triggered).
+watch(
+  sponsorsRequested,
+  (wanted) => {
+    if (!wanted) return;
+    sponsorsRequested.value = false;
+    showSponsors.value = true;
+  },
+  { immediate: true },
+);
 
 const appVersion = ref(__APP_VERSION__);
 const checkingUpdate = ref(false);

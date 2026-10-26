@@ -77,15 +77,18 @@ fn restore_aec_runtime(
     settings: &RwLock<AudioDspSettings>,
     events: &SharedEvents,
 ) {
-    *runtime_available = true;
+    // A platform without a reference source can never become available, so the
+    // restored state reports the capability instead of assuming success.
+    let availability = micyou_audio::aec_reference_availability();
+    *runtime_available = availability.available;
     let enabled = settings
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .aec_enabled;
     events.aec_status_changed(AecStatus {
-        available: true,
-        enabled,
-        reason: None,
+        available: availability.available,
+        enabled: enabled && availability.available,
+        reason: availability.reason,
     });
 }
 
@@ -297,17 +300,16 @@ fn run(pipeline: Pipeline) {
     let mut frame_counter: u32 = 0;
     let mut monitoring: Option<bool> = None;
 
-    // Speaker loopback capture for the AEC far-end reference. Windows uses
-    // WASAPI loopback; Linux records the default physical playback sink.
-    // Both start lazily only after an AEC-enabled session sends audio.
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    // Speaker loopback capture for the AEC far-end reference. The audio crate
+    // picks the platform source - WASAPI loopback, the PipeWire sink monitor, or
+    // on macOS a Core Audio process tap falling back to BlackHole - so every
+    // platform gets a capture and this layer only asks whether it is active.
+    // It still starts lazily, once an AEC-enabled session sends audio.
     let loopback: Option<micyou_audio::LoopbackCapture> =
         Some(micyou_audio::LoopbackCapture::new());
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-    let loopback: Option<micyou_audio::LoopbackCapture> = None;
 
     let mut audio_received_for_session = false;
-    let mut aec_runtime_available = true;
+    let mut aec_runtime_available = micyou_audio::aec_reference_availability().available;
     // A newly started server always begins with a fresh runtime state, even
     // before the first client session arrives.
     if loopback.is_some() {

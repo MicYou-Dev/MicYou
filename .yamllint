@@ -1,0 +1,15 @@
+# MicYou keeps its workflows in the style they were authored in: 4-space step
+# indentation, long single-line commands, and CRLF in the release mirrors. Those are
+# style rules only, so they are declared off here instead of reformatting release
+# pipelines nobody asked to touch. Everything that guards correctness stays on, so
+# duplicated keys, bad colons/commas, unbalanced brackets and syntax errors still fail.
+extends: default
+
+rules:
+  brackets: disable # [ 'a', 'b' ] spacing
+  document-start: disable # the workflows never carried a leading ---
+  indentation: disable # 4-space steps rather than yamllint's 2
+  line-length: disable # long `npm run tauri -- build ... --target ...` commands
+  new-line-at-end-of-file: disable
+  new-lines: disable # mirrorchyan_release.yml is CRLF upstream
+  truthy: disable # GitHub Actions needs a bare `on:` key

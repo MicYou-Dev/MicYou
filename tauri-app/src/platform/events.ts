@@ -19,6 +19,10 @@ export interface AppEvents {
   'vbcable-install-progress': string;
   'plugin-download-progress': PluginDownloadProgress;
   'tray-action': string;
+  /** macOS: the native close button, forwarded so it keeps the hide/confirm flow. */
+  'main-window-close-requested': unknown;
+  /** macOS: an app menu item the frontend declared was clicked; payload is its id. */
+  'app-menu-action': string;
   /** Backend → settings window when the hidden window is shown again. */
   'settings-window-shown': unknown;
   /** Settings window → main window when the output device changes. */

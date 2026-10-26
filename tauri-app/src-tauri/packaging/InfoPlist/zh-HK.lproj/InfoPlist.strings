@@ -1,0 +1,6 @@
+/* Localized permission prompts, Cantonese (zh-hk.json).
+   The keys must match src-tauri/Info.plist exactly or macOS silently
+   falls back to the English text in that file. */
+"NSAudioCaptureUsageDescription" = "MicYou 會錄系統播放嘅聲音，用嚟消除回音，唔會傳返畀對方。";
+"NSLocalNetworkUsageDescription" = "MicYou 需要喺本地網絡搵你部手機並連埋一齊。";
+"NSAppleEventsUsageDescription" = "MicYou 需要開終端機嚟行 CLI 或者 TUI 版本。";
