@@ -391,4 +391,19 @@
     <string name="qs_toast_stopped">串流已結束</string>
     <string name="firstLaunchDownloadPc">下载电脑端</string>
     <string name="errorSuggestionCheckSettings">检查系统设定中的应用程式权限</string>
+    <string name="soundpadLabel">SoundPad</string>
+    <string name="soundpadNowPlaying">正在播放：%1$s</string>
+    <string name="soundpadIdleHint">點擊卡片，把音效混入麥克風流</string>
+    <string name="soundpadEmptyLibrary">桌面端音效庫為空</string>
+    <string name="soundpadEmptyLibraryHint">在桌面端把音訊檔案（WAV/MP3/FLAC/OGG/M4A）放進外掛的 sounds/ 目錄，然後點重新整理</string>
+    <string name="soundpadStopAll">全部停止</string>
+    <string name="soundpadRefresh">重新整理</string>
+    <string name="soundpadLoading">解碼中…</string>
+    <string name="soundpadVadOn">防撞啟用</string>
+    <string name="soundpadVadOff">防撞停用</string>
+    <string name="soundpadStop">停止</string>
+    <string name="soundpadLoop">循環</string>
+    <string name="soundpadVolume">音量</string>
+    <string name="soundpadBack">返回上層</string>
+    <string name="soundpadFolderCount">%1$d 項</string>
 </resources>

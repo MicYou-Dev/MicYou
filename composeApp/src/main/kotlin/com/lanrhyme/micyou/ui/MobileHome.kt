@@ -35,7 +35,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,6 +49,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -128,6 +131,7 @@ import com.lanrhyme.micyou.ui.background.HazeSurface
 import com.lanrhyme.micyou.ui.MobileHome
 import com.lanrhyme.micyou.ui.ShardTextField
 import com.lanrhyme.micyou.ui.visualizer.ConnectingAnimation
+import com.lanrhyme.micyou.soundpad.SoundPadUiState
 import com.lanrhyme.micyou.viewmodel.AppUiState
 import com.lanrhyme.micyou.viewmodel.ConnectionMode
 import com.lanrhyme.micyou.viewmodel.MainViewModel
@@ -139,6 +143,9 @@ import com.lanrhyme.micyou.viewmodel.VisualizerStyle
 fun MobileHome(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val audioLevel by viewModel.audioLevels.collectAsState(initial = 0f)
+    val soundPad by viewModel.soundPadState.collectAsState()
+    // SoundPad 面板展开时收起连接配置卡片，把纵向空间让给音效网格
+    val soundPadPanelOpen = soundPad.showPanel && soundPad.available
     
     val snackbarHostState = remember { SnackbarHostState() }
     val isDarkTheme = isDarkThemeActive(state.themeMode)
@@ -164,6 +171,13 @@ fun MobileHome(viewModel: MainViewModel) {
         state.snackbarMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearSnackbar()
+        }
+    }
+
+    LaunchedEffect(soundPad.errorMessage) {
+        soundPad.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.soundPadConsumeError()
         }
     }
 
@@ -207,17 +221,25 @@ fun MobileHome(viewModel: MainViewModel) {
                     )
                 }
 
-                // Connection config
-                AnimatedCardVisibility(
-                    visible = contentVisible,
-                    delayMillis = 150
+                // Connection config（SoundPad 面板展开时收起）
+                AnimatedVisibility(
+                    visible = !soundPadPanelOpen,
+                    enter = expandVertically(animationSpec = tween(300, easing = EasingFunctions.EaseOutExpo))
+                            + fadeIn(animationSpec = tween(220)),
+                    exit = shrinkVertically(animationSpec = tween(220, easing = EasingFunctions.EaseInOutExpo))
+                            + fadeOut(animationSpec = tween(150))
                 ) {
-                    ConnectionConfigCard(
-                        state = state,
-                        viewModel = viewModel,
-                                                cardOpacity = state.backgroundSettings.cardOpacity,
-                        hazeState = hazeState
-                    )
+                    AnimatedCardVisibility(
+                        visible = contentVisible,
+                        delayMillis = 150
+                    ) {
+                        ConnectionConfigCard(
+                            state = state,
+                            viewModel = viewModel,
+                                                    cardOpacity = state.backgroundSettings.cardOpacity,
+                            hazeState = hazeState
+                        )
+                    }
                 }
 
                 // Main control
@@ -235,7 +257,29 @@ fun MobileHome(viewModel: MainViewModel) {
                     )
                 }
 
-                // Bottom bar (mute + settings)
+                // SoundPad Panel（桌面端音效板遥控；从底部滑入，沿袭旧版布局）
+                AnimatedVisibility(
+                    visible = soundPadPanelOpen && contentVisible,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(300, easing = EasingFunctions.EaseOutExpo)
+                    ) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(250, easing = EasingFunctions.EaseInOutExpo)
+                    ) + fadeOut(animationSpec = tween(150))
+                ) {
+                    SoundPadPanel(
+                        soundPad = soundPad,
+                        viewModel = viewModel,
+                        cardOpacity = state.backgroundSettings.cardOpacity,
+                        hazeState = hazeState,
+                        enableHazeEffect = state.backgroundSettings.enableHazeEffect,
+                        modifier = Modifier.fillMaxHeight(2f / 3f)
+                    )
+                }
+
+                // Bottom bar (mute + soundpad + status)
                 AnimatedCardVisibility(
                     visible = contentVisible,
                     delayMillis = 350
@@ -243,6 +287,7 @@ fun MobileHome(viewModel: MainViewModel) {
                     MobileBottomBar(
                         state = state,
                         viewModel = viewModel,
+                        soundPad = soundPad,
                                                 cardOpacity = state.backgroundSettings.cardOpacity,
                         hazeState = hazeState
                     )
@@ -744,6 +789,7 @@ private fun MainControlCard(
 private fun MobileBottomBar(
     state: AppUiState,
     viewModel: MainViewModel,
+    soundPad: SoundPadUiState,
     cardOpacity: Float = 1f,
     hazeState: HazeState? = null
 ) {
@@ -765,6 +811,13 @@ private fun MobileBottomBar(
                     isMuted = state.isMuted,
                     onToggle = { viewModel.toggleMute() }
                 )
+                // 仅在桌面端确认存在 soundpad 插件（hello 有回包）后出现
+                if (soundPad.available) {
+                    SoundPadToggleButton(
+                        isActive = soundPad.showPanel,
+                        onToggle = { viewModel.toggleSoundPadPanel() }
+                    )
+                }
             }
             
             val dotColor by animateColorAsState(

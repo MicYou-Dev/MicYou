@@ -391,4 +391,19 @@
     <string name="qs_toast_stopped">Streaming stopped</string>
     <string name="firstLaunchDownloadPc">Download PC App</string>
     <string name="errorSuggestionCheckSettings">Check app permissions in system settings</string>
+    <string name="soundpadLabel">SoundPad</string>
+    <string name="soundpadNowPlaying">Now playing: %1$s</string>
+    <string name="soundpadIdleHint">Tap a card to mix a sound into the mic stream</string>
+    <string name="soundpadEmptyLibrary">No sounds on the desktop yet</string>
+    <string name="soundpadEmptyLibraryHint">Put WAV/MP3/FLAC/OGG/M4A files into the plugin\'s sounds/ folder on the desktop, then refresh</string>
+    <string name="soundpadStopAll">Stop all</string>
+    <string name="soundpadRefresh">Refresh</string>
+    <string name="soundpadLoading">Decoding…</string>
+    <string name="soundpadVadOn">Guard on</string>
+    <string name="soundpadVadOff">Guard off</string>
+    <string name="soundpadStop">Stop</string>
+    <string name="soundpadLoop">Loop</string>
+    <string name="soundpadVolume">Volume</string>
+    <string name="soundpadBack">Back</string>
+    <string name="soundpadFolderCount">%1$d items</string>
 </resources>
