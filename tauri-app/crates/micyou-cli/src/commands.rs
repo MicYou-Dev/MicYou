@@ -266,6 +266,7 @@ pub fn cmd_server_get() {
     println!("mode: {}", prefs.mode);
     println!("port: {}", prefs.port);
     println!("webPort: {}", prefs.web_port);
+    println!("webAllowedOrigins: {}", serde_json::json!(prefs.web_allowed_origins));
     println!("bindAddress: {}", prefs.bind_address);
     println!("autoBind: {}", prefs.auto_bind);
     println!("outputDevice: {}", prefs.output_device);
@@ -293,6 +294,10 @@ pub fn cmd_server_set(key: &str, value: &str) -> Result<(), String> {
                 .map_err(|_| format!("invalid webPort '{value}'"))?;
             prefs.web_port = v;
         }
+        "webAllowedOrigins" => {
+            prefs.web_allowed_origins = serde_json::from_str(value)
+                .map_err(|_| "webAllowedOrigins must be a JSON array of HTTP(S) origins".to_string())?;
+        }
         "mode" => {
             if !["wifi", "usb", "web"].contains(&value) {
                 return Err(format!(
@@ -314,7 +319,7 @@ pub fn cmd_server_set(key: &str, value: &str) -> Result<(), String> {
         }
         _ => {
             return Err(format!(
-                "unknown key '{key}' (expected port, webPort, mode, bindAddress, autoBind, outputDevice)"
+                "unknown key '{key}' (expected port, webPort, webAllowedOrigins, mode, bindAddress, autoBind, outputDevice)"
             ));
         }
     }
