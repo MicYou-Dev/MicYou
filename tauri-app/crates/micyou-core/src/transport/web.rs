@@ -182,6 +182,46 @@ fn float32_to_pcm16(float32_bytes: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn connection_check_reports_origin_rejection() {
+        let missing = check_connection(HeaderMap::new(), axum::extract::State(Arc::new(vec![])))
+            .await.into_response();
+        assert_eq!(missing.status(), StatusCode::FORBIDDEN);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-micyou-origin", "https://evil.example".parse().unwrap());
+        assert_eq!(
+            check_connection(headers, axum::extract::State(Arc::new(vec![])))
+                .await.into_response().status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-micyou-origin", "https://127.0.0.1:8443".parse().unwrap());
+        assert_eq!(
+            check_connection(headers, axum::extract::State(Arc::new(vec![])))
+                .await.into_response().status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn connection_check_uses_the_configured_origin_allowlist() {
+        let allowed = Arc::new(vec!["https://computer.example.ts.net:9443".to_string()]);
+        for (origin, expected) in [
+            ("https://computer.example.ts.net:9443", StatusCode::OK),
+            ("https://computer.example.ts.net", StatusCode::FORBIDDEN),
+            ("http://computer.example.ts.net:9443", StatusCode::FORBIDDEN),
+            ("https://computer.example.ts.net.evil:9443", StatusCode::FORBIDDEN),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-micyou-origin", origin.parse().unwrap());
+            let response = check_connection(headers, axum::extract::State(allowed.clone()))
+                .await.into_response();
+            assert_eq!(response.status(), expected, "origin: {origin}");
+        }
+    }
+
     #[test]
     fn test_generate_self_signed_cert_pem() {
         let cert = generate_self_signed_cert_pem(&certificate_ips());
@@ -216,29 +256,50 @@ mod tests {
 
     #[test]
     fn test_is_valid_origin_v4_behavior_unchanged() {
-        assert!(is_valid_origin(None));
-        assert!(is_valid_origin(Some("http://localhost:8443")));
-        assert!(is_valid_origin(Some("http://127.0.0.1:8443")));
-        assert!(!is_valid_origin(Some("https://evil.example.com")));
-        assert!(!is_valid_origin(Some("https://localhost.evil.example.com")));
-        assert!(!is_valid_origin(Some("https://127.0.0.1.evil.example.com")));
-        assert!(!is_valid_origin(Some("null")));
+        assert!(is_valid_origin(None, &[]));
+        assert!(is_valid_origin(Some("http://localhost:8443"), &[]));
+        assert!(is_valid_origin(Some("http://127.0.0.1:8443"), &[]));
+        assert!(!is_valid_origin(Some("https://evil.example.com"), &[]));
+        assert!(!is_valid_origin(Some("https://localhost.evil.example.com"), &[]));
+        assert!(!is_valid_origin(Some("https://127.0.0.1.evil.example.com"), &[]));
+        assert!(!is_valid_origin(Some("null"), &[]));
         for ip in get_lan_ips() {
-            assert!(is_valid_origin(Some(&format!("https://{}:8443", ip))));
+            assert!(is_valid_origin(Some(&format!("https://{}:8443", ip)), &[]));
         }
     }
 
     #[test]
     fn test_is_valid_origin_accepts_ipv6() {
         // Browsers bracket IPv6 hosts in the Origin header.
-        assert!(is_valid_origin(Some("https://[::1]:8443")));
+        assert!(is_valid_origin(Some("https://[::1]:8443"), &[]));
         for ip in get_lan_ipv6s() {
             assert!(
-                is_valid_origin(Some(&format!("https://[{}]:8443", ip))),
+                is_valid_origin(Some(&format!("https://[{}]:8443", ip)), &[]),
                 "origin with [{}] rejected",
                 ip
             );
         }
+    }
+
+    #[test]
+    fn explicit_origin_allowlist_matches_scheme_host_and_port_exactly() {
+        let allowed = vec!["https://computer.example.ts.net:9443".to_string()];
+        assert!(is_valid_origin(Some(&allowed[0]), &allowed));
+        for origin in [
+            "https://computer.example.ts.net",
+            "http://computer.example.ts.net:9443",
+            "https://computer.example.ts.net:8443",
+            "https://computer.example.ts.net.evil:9443",
+            "https://evil.example.ts.net:9443",
+            "https://computer.example.ts.net:9443/",
+            "https://computer.example.ts.net:9443@evil.com",
+            "null",
+        ] {
+            assert!(!is_valid_origin(Some(origin), &allowed), "accepted {origin}");
+        }
+        assert!(!is_valid_origin(Some(&allowed[0]), &[]));
+        // Even an unvalidated configuration cannot allow a malformed origin.
+        assert!(!is_valid_origin(Some("*"), &["*".to_string()]));
     }
 
     #[test]
@@ -361,13 +422,18 @@ fn origin_host(origin: &str) -> Option<&str> {
     (!host.is_empty()).then_some(host)
 }
 
-/// Only pages served by this machine may open the audio socket; any other
-/// site could otherwise inject audio into the virtual microphone from the
-/// user's browser.
-fn is_valid_origin(origin: Option<&str>) -> bool {
+/// Only this machine's IP origins and explicitly trusted proxy origins may
+/// open the audio socket. Other websites must not inject microphone audio.
+fn is_valid_origin(origin: Option<&str>, allowed_origins: &[String]) -> bool {
     let Some(origin) = origin else {
         return true;
     };
+    if crate::config::canonical_web_origin(origin).is_none() {
+        return false;
+    }
+    if allowed_origins.iter().any(|allowed| allowed == origin) {
+        return true;
+    }
     let Some(host) = origin_host(origin) else {
         return false;
     };
@@ -380,13 +446,27 @@ fn is_valid_origin(origin: Option<&str>) -> bool {
     ip.is_loopback() || get_lan_ips().contains(&ip) || get_lan_ipv6s().contains(&ip)
 }
 
+// A normal HTTP request can expose diagnostics that a browser hides during a
+// failed WebSocket handshake. This does not authorize the later upgrade.
+async fn check_connection(
+    headers: HeaderMap,
+    axum::extract::State(allowed_origins): axum::extract::State<Arc<Vec<String>>>,
+) -> impl IntoResponse {
+    let origin = headers.get("x-micyou-origin").and_then(|v| v.to_str().ok());
+    if origin.is_some() && is_valid_origin(origin, &allowed_origins) {
+        (StatusCode::OK, "Ready")
+    } else {
+        (StatusCode::FORBIDDEN, "Invalid origin")
+    }
+}
+
 async fn handle_websocket(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
     axum::extract::State(state): axum::extract::State<WebServerState>,
 ) -> impl IntoResponse {
     let origin = headers.get("origin").and_then(|v| v.to_str().ok());
-    if !is_valid_origin(origin) {
+    if !is_valid_origin(origin, &state.allowed_origins) {
         return (StatusCode::FORBIDDEN, "Invalid origin").into_response();
     }
     let permit = match state.websocket_slots.clone().try_acquire_owned() {
@@ -535,6 +615,7 @@ impl ActiveWebSender {
 
 #[derive(Clone)]
 pub struct WebServerState {
+    pub allowed_origins: Arc<Vec<String>>,
     pub events: SharedEvents,
     pub audio_tx: tokio::sync::mpsc::Sender<(u64, micyou_protocol::micyou::AudioPacketMessage)>,
     pub client_count: Arc<AtomicUsize>,
@@ -628,8 +709,12 @@ impl WebServer {
             return Err("Web server is already running".to_string());
         }
 
+        let allowed_origins = crate::config::load_server_prefs().web_allowed_origins;
+        crate::config::validate_web_allowed_origins(&allowed_origins)?;
+
         let new_token = CancellationToken::new();
         let state = WebServerState {
+            allowed_origins: Arc::new(allowed_origins),
             events,
             audio_tx,
             client_count: self.client_count.clone(),
@@ -641,6 +726,10 @@ impl WebServer {
         let app = Router::new()
             .route("/", get(serve_html))
             .route("/alpine.min.js", get(serve_alpine_js))
+            .route(
+                "/connection-check",
+                get(check_connection).with_state(state.allowed_origins.clone()),
+            )
             .route("/ws", get(handle_websocket))
             .with_state(state);
         // Clone for the best-effort IPv6 listener started below; the IPv4

@@ -152,6 +152,8 @@ pub struct ServerPrefs {
     pub port: u16,
     /// Port for the web (https) mode.
     pub web_port: u16,
+    /// Additional exact HTTP(S) origins trusted to send web microphone audio.
+    pub web_allowed_origins: Vec<String>,
     /// Connection mode: wifi | usb | web.
     pub mode: String,
     /// Bind address ("0.0.0.0" when auto-bind).
@@ -172,6 +174,7 @@ impl Default for ServerPrefs {
         Self {
             port: 8554,
             web_port: 8443,
+            web_allowed_origins: Vec::new(),
             mode: "wifi".to_string(),
             bind_address: "0.0.0.0".to_string(),
             auto_bind: true,
@@ -188,5 +191,65 @@ pub fn load_server_prefs() -> ServerPrefs {
 
 /// Persist connection settings to server.json (GUI, CLI and TUI share this file).
 pub fn save_server_prefs(prefs: &ServerPrefs) -> Result<(), String> {
+    validate_web_allowed_origins(&prefs.web_allowed_origins)?;
     save_json(&server_prefs_path(), prefs)
+}
+
+/// Require serialized origins, not URLs, patterns or DNS lookups. Exact
+/// scheme/host/port matching avoids trusting unrelated sites on the same host.
+pub(crate) fn canonical_web_origin(origin: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(origin).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str()?.contains('*')
+        || url.origin().ascii_serialization() != origin
+    {
+        return None;
+    }
+    Some(url)
+}
+
+pub(crate) fn validate_web_allowed_origins(origins: &[String]) -> Result<(), String> {
+    for origin in origins {
+        if canonical_web_origin(origin).is_none() {
+            return Err(format!(
+                "invalid webAllowedOrigins entry '{origin}': expected a canonical HTTP(S) origin, such as https://computer.example.ts.net (no path, credentials or wildcard)"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod web_origin_tests {
+    use super::*;
+
+    #[test]
+    fn old_preferences_default_to_no_additional_origins() {
+        let prefs: ServerPrefs = serde_json::from_str(r#"{"webPort":9443}"#).unwrap();
+        assert!(prefs.web_allowed_origins.is_empty());
+        assert_eq!(prefs.web_port, 9443);
+    }
+
+    #[test]
+    fn allowed_origins_round_trip_through_preferences() {
+        let prefs: ServerPrefs = serde_json::from_str(
+            r#"{"webAllowedOrigins":["https://computer.example.ts.net","http://localhost:9000","https://[::1]:9443"]}"#,
+        ).unwrap();
+        assert!(validate_web_allowed_origins(&prefs.web_allowed_origins).is_ok());
+        let restored: ServerPrefs = serde_json::from_str(&serde_json::to_string(&prefs).unwrap()).unwrap();
+        assert_eq!(prefs.web_allowed_origins, restored.web_allowed_origins);
+    }
+
+    #[test]
+    fn allowed_origins_reject_urls_patterns_and_noncanonical_values() {
+        for origin in [
+            "*", "https://*.example.com", "https://example.com/", "https://example.com/audio",
+            "https://example.com?x=1", "https://example.com#fragment", "https://user:pass@example.com",
+            "https://@example.com", "file://example.com", "wss://example.com", "null",
+            "https://EXAMPLE.com", "https://example.com:443", " https://example.com",
+            "https://example.com\\evil", "https://example.com\n",
+        ] {
+            assert!(validate_web_allowed_origins(&[origin.to_string()]).is_err(), "accepted {origin:?}");
+        }
+    }
 }

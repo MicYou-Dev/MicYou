@@ -53,6 +53,9 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
   
   // Port for Web RTC / HTTPS server stream
   const webPort = useStorage<number>('micyou_webPort', 8443);
+
+  // Preserve advanced origins configured in server.json when saving GUI prefs.
+  let webAllowedOrigins: string[] = [];
   
   // Number of clients currently connected to the Web interface
   const webClientCount = ref(0);
@@ -348,6 +351,7 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
       if (!prefs) return;
       if (prefs.port) serverPort.value = prefs.port;
       if (prefs.webPort) webPort.value = prefs.webPort;
+      webAllowedOrigins = prefs.webAllowedOrigins ?? [];
       if (prefs.mode && ['wifi', 'usb', 'web'].includes(prefs.mode)) {
         connectionMode.value = prefs.mode as ConnectionMode;
       }
@@ -370,6 +374,7 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
         prefs: {
           port: Number(serverPort.value),
           webPort: Number(webPort.value),
+          webAllowedOrigins,
           mode: connectionMode.value,
           bindAddress: isAutoBind.value ? '0.0.0.0' : selectedIp.value,
           autoBind: isAutoBind.value,
