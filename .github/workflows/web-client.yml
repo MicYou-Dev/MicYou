@@ -1,0 +1,51 @@
+name: Web Client
+
+on:
+  pull_request:
+    paths:
+      - 'tauri-app/crates/micyou-core/assets/**'
+      - 'tauri-app/scripts/web-preview.mjs'
+      - 'tauri-app/tests/**'
+      - 'tauri-app/playwright.web.config.ts'
+      - 'tauri-app/package.json'
+      - 'tauri-app/bun.lock'
+      - '.github/workflows/web-client.yml'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'tauri-app/crates/micyou-core/assets/**'
+      - 'tauri-app/scripts/web-preview.mjs'
+      - 'tauri-app/tests/**'
+      - 'tauri-app/playwright.web.config.ts'
+      - 'tauri-app/package.json'
+      - 'tauri-app/bun.lock'
+      - '.github/workflows/web-client.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-web-client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tauri-app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: tauri-app/package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run test:web
+      - run: bunx playwright install --with-deps chromium webkit
+      - run: bun run test:web:browser
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: web-client-test-results
+          path: tauri-app/test-results/
+          retention-days: 7
