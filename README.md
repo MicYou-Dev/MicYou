@@ -62,6 +62,8 @@
 
 For platform-specific installation steps and troubleshooting, visit the [MicYou documentation](https://micyou.top/en/docs/quick-start).
 
+For browser connections across private networks, see [Web mode across private networks](docs/web-private-networks.md).
+
 ## Technology
 
 - Android: Kotlin, Jetpack Compose, Material 3
