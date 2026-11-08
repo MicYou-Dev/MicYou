@@ -224,6 +224,11 @@ pub struct DspDescriptor {
     /// DSP plugins are granted an additional real-time slot check.
     #[serde(default)]
     pub realtime_safe: bool,
+    /// Opt-in: keep duplicate `Plugin:<id>` entries in `processingChain`
+    /// instead of collapsing to one, and pass the occurrence index through
+    /// `AudioFrameCtx::node_index` / `micyou_plugin_process_node`.
+    #[serde(default)]
+    pub allow_multiple_nodes: bool,
 }
 
 /// A single configurable field; the host renders an automatic form from

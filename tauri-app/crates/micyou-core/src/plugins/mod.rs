@@ -240,6 +240,7 @@ impl PluginHost {
                 id.to_string(),
                 dsp.first,
                 dsp.insert_after.clone(),
+                dsp.allow_multiple_nodes,
                 handle,
             ))?;
         }
@@ -294,17 +295,19 @@ impl PluginHost {
         dsp_settings: &RwLock<micyou_audio::dsp::AudioDspSettings>,
     ) {
         let ids = self.dsp_registry.plugin_ids();
+        let multi = self.dsp_registry.multi_node_ids();
         let mut settings = dsp_settings
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        reconcile_plugin_chain(&mut settings.processing_chain, &ids);
+        reconcile_plugin_chain(&mut settings.processing_chain, &ids, &multi);
     }
 
     /// Reconcile the chain inside a settings value about to be applied, so a
     /// full-settings write can neither drop active nor keep stale nodes.
     pub fn reconcile_settings_chain(&self, settings: &mut micyou_audio::dsp::AudioDspSettings) {
         let ids = self.dsp_registry.plugin_ids();
-        reconcile_plugin_chain(&mut settings.processing_chain, &ids);
+        let multi = self.dsp_registry.multi_node_ids();
+        reconcile_plugin_chain(&mut settings.processing_chain, &ids, &multi);
     }
 
     pub fn dsp_hook(&self) -> micyou_audio::dsp::ExternalDspHook {

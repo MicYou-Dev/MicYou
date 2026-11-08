@@ -33,6 +33,8 @@ type InfoFn = unsafe extern "C" fn() -> *const mpl_plugin_info_t;
 type InitFn = unsafe extern "C" fn(*const mpl_host_api_t) -> mpl_result_t;
 type DeinitFn = unsafe extern "C" fn();
 type ProcessFn = unsafe extern "C" fn(*mut f32, u32, u32, f64, *mut u32) -> mpl_result_t;
+type ProcessNodeFn =
+    unsafe extern "C" fn(*mut f32, u32, u32, f64, u32, *mut u32) -> mpl_result_t;
 type EventFn = unsafe extern "C" fn(*const c_char, *const c_char) -> mpl_result_t;
 type MessageFn = unsafe extern "C" fn(*const c_char, *const c_char, *const u8, u32) -> mpl_result_t;
 
@@ -54,6 +56,7 @@ pub struct NativePlugin {
     f_init: Symbol<'static, InitFn>,
     f_deinit: Symbol<'static, DeinitFn>,
     f_process: Option<Symbol<'static, ProcessFn>>,
+    f_process_node: Option<Symbol<'static, ProcessNodeFn>>,
     f_event: Option<Symbol<'static, EventFn>>,
     f_message: Option<Symbol<'static, MessageFn>>,
 }
@@ -129,6 +132,9 @@ impl NativePlugin {
             // ── Optional entry points ──
             let f_process = get_optional::<ProcessFn>(&lib, b"micyou_plugin_process\0")
                 .map(|s| transmute_symbol(s));
+            let f_process_node =
+                get_optional::<ProcessNodeFn>(&lib, b"micyou_plugin_process_node\0")
+                    .map(|s| transmute_symbol(s));
             let f_event = get_optional::<EventFn>(&lib, b"micyou_plugin_handle_event\0")
                 .map(|s| transmute_symbol(s));
             let f_message = get_optional::<MessageFn>(&lib, b"micyou_plugin_handle_message\0")
@@ -159,6 +165,7 @@ impl NativePlugin {
                 f_init,
                 f_deinit,
                 f_process,
+                f_process_node,
                 f_event,
                 f_message,
             };
@@ -208,10 +215,30 @@ impl PluginRuntime for NativePlugin {
     }
 
     fn process_audio(&mut self, ctx: &mut AudioFrameCtx<'_>) -> PluginResult<ProcessStatus> {
+        let mut bypass: u32 = 0;
+        // A multi-node host passes the chain occurrence index; prefer the
+        // extended export so the plugin can address each node separately.
+        if let (Some(f_process_node), Some(node_index)) = (&self.f_process_node, ctx.node_index) {
+            let code = unsafe {
+                f_process_node(
+                    ctx.data.as_mut_ptr(),
+                    ctx.data.len() as u32,
+                    ctx.channels as u32,
+                    ctx.queued_ms,
+                    node_index as u32,
+                    &mut bypass,
+                )
+            };
+            abi::result_from_code(code, "micyou_plugin_process_node")?;
+            return Ok(if bypass != 0 {
+                ProcessStatus::Bypass
+            } else {
+                ProcessStatus::Ok
+            });
+        }
         let Some(f_process) = &self.f_process else {
             return Ok(ProcessStatus::Bypass);
         };
-        let mut bypass: u32 = 0;
         let code = unsafe {
             f_process(
                 ctx.data.as_mut_ptr(),

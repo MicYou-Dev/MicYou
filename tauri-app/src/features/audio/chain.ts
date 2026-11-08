@@ -19,6 +19,8 @@ export const LEGACY_PLUGINS_NODE = 'Plugins';
 /** 链处理所需的最小插件信息（PluginView 天然满足） */
 export interface ChainPlugin extends LocalizablePlugin {
   id: string;
+  /** `dsp.allowMultipleNodes`: keep duplicate chain nodes for this plugin. */
+  dsp?: { allowMultipleNodes?: boolean } | null;
 }
 
 export function pluginNodeId(id: string): string {
@@ -47,6 +49,9 @@ export function pluginDisplayName(plugin: ChainPlugin, locale: string): string {
  */
 export function reconcilePluginNodes(chain: string[], activePlugins: ChainPlugin[]): string[] {
   const activeIds = activePlugins.map((p) => p.id);
+  const multiIds = new Set(
+    activePlugins.filter((p) => p.dsp?.allowMultipleNodes).map((p) => p.id),
+  );
   const present = new Set<string>();
   const out: string[] = [];
   for (const item of chain) {
@@ -55,7 +60,8 @@ export function reconcilePluginNodes(chain: string[], activePlugins: ChainPlugin
       out.push(item);
       continue;
     }
-    if (!activeIds.includes(id) || present.has(id)) continue;
+    if (!activeIds.includes(id)) continue;
+    if (!multiIds.has(id) && present.has(id)) continue;
     present.add(id);
     out.push(item);
   }
@@ -96,7 +102,18 @@ export function normalizeChain(
   activePlugins: ChainPlugin[],
   isAecSupported: boolean,
 ): string[] {
-  const deduped = chain.filter((item, idx) => chain.indexOf(item) === idx);
+  const multiIds = new Set(
+    activePlugins.filter((p) => p.dsp?.allowMultipleNodes).map((p) => p.id),
+  );
+  const seen = new Set<string>();
+  const deduped = chain.filter((item) => {
+    const id = parsePluginNodeId(item);
+    // Multi-node plugins own several identical entries on purpose.
+    if (id !== null && multiIds.has(id)) return true;
+    if (seen.has(item)) return false;
+    seen.add(item);
+    return true;
+  });
   const rest = deduped.filter((i) => i !== 'AEC');
   const base = isAecSupported ? ['AEC', ...rest] : rest;
   return reconcilePluginNodes(base, activePlugins);

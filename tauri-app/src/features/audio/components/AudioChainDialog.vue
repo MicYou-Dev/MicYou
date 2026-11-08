@@ -38,7 +38,7 @@
           <div class="flex flex-col gap-2 relative">
             <div
               v-for="(item, index) in localChain"
-              :key="item"
+              :key="`${item}-${index}`"
               :data-index="index"
               class="flex min-w-0 items-center bg-surface-container rounded-xl p-3 border-2 transition-all shadow-xs group select-none relative"
               :class="
@@ -76,7 +76,7 @@
                   class="w-3.5 h-3.5 shrink-0 text-primary/70"
                 />
                 <span class="text-sm font-bold text-on-surface truncate">{{
-                  chainLabel(item)
+                  chainLabel(item, index)
                 }}</span>
               </div>
             </div>
@@ -120,8 +120,15 @@ const activeDspPlugins = computed<ChainPlugin[]>(() =>
 );
 
 // 处理链节点显示名（插件节点用完整插件列表解析名称，失效节点也能显示）
-function chainLabel(item: string): string {
-  return chainStageLabel(item, t, pluginsState.plugins.value, locale.value);
+// Multi-node plugins appear once per chain entry; suffix the 2nd+ copy so the
+// occurrences can be told apart while dragging.
+function chainLabel(item: string, index: number): string {
+  const base = chainStageLabel(item, t, pluginsState.plugins.value, locale.value);
+  if (!isPluginNode(item)) return base;
+  const occurrence = localChain.value
+    .slice(0, index)
+    .filter((node) => node === item).length;
+  return occurrence > 0 ? `${base} #${occurrence + 1}` : base;
 }
 
 watch(

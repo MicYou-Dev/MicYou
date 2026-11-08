@@ -175,6 +175,15 @@ MPL_EXPORT mpl_result_t micyou_plugin_process(float *data, uint32_t samples,
                                               uint32_t channels, double queued_ms,
                                               uint32_t *bypass);
 
+/* Multi-node DSP extension (optional). Same contract as
+ * `micyou_plugin_process`, plus the 0-based occurrence index of this
+ * `Plugin:<id>` entry in `processingChain`. Hosts that keep duplicate plugin
+ * nodes (manifest `dsp.allowMultipleNodes: true`) prefer this symbol. */
+MPL_EXPORT mpl_result_t micyou_plugin_process_node(float *data, uint32_t samples,
+                                                   uint32_t channels, double queued_ms,
+                                                   uint32_t node_index,
+                                                   uint32_t *bypass);
+
 /* Local bus event; `type` is the snake_case event type, `json` its payload. */
 MPL_EXPORT mpl_result_t micyou_plugin_handle_event(const char *type, const char *json);
 

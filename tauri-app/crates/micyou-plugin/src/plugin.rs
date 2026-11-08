@@ -77,6 +77,10 @@ pub struct AudioFrameCtx<'a> {
     pub channels: usize,
     pub sample_rate: u32,
     pub queued_ms: f64,
+    /// 0-based occurrence of this plugin's chain node among entries with the
+    /// same id. `Some` only when the host invokes
+    /// `micyou_plugin_process_node`; a single-node host leaves it `None`.
+    pub node_index: Option<usize>,
 }
 
 /// What a plugin did with an audio frame.

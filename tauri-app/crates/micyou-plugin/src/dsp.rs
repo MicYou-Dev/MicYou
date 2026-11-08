@@ -38,8 +38,9 @@ use std::sync::{Arc, Mutex, RwLock};
 /// is enabled again (about one second of audio).
 const MAX_CONSECUTIVE_FAILURES: u32 = 50;
 
-/// Per-node DSP callback: node name, interleaved samples, channels, queued ms.
-pub type DspHook = Box<dyn FnMut(&str, &mut Vec<f32>, usize, f64) + Send>;
+/// Per-node DSP callback: node name, occurrence index, interleaved samples,
+/// channels, queued ms.
+pub type DspHook = Box<dyn FnMut(&str, usize, &mut Vec<f32>, usize, f64) + Send>;
 
 /// Legacy synthetic chain node name that runs **all** registered plugins.
 /// Must stay in sync with `micyou_audio::dsp::PLUGIN_CHAIN_NODE` (this crate
@@ -59,6 +60,9 @@ pub struct DspNode {
     pub first: bool,
     /// Manifest position hint: run right after this plugin id (if present).
     pub insert_after: Option<String>,
+    /// Manifest `dsp.allowMultipleNodes`: keep every `Plugin:<id>` chain
+    /// entry instead of collapsing to one, and pass the occurrence index.
+    pub allow_multiple_nodes: bool,
     /// The loaded instance, shared with the plugin manager.
     pub instance: Arc<Mutex<PluginInstance>>,
     failures: AtomicU32,
@@ -69,12 +73,14 @@ impl DspNode {
         plugin_id: String,
         first: bool,
         insert_after: Option<String>,
+        allow_multiple_nodes: bool,
         instance: Arc<Mutex<PluginInstance>>,
     ) -> Self {
         Self {
             plugin_id,
             first,
             insert_after,
+            allow_multiple_nodes,
             instance,
             failures: AtomicU32::new(0),
         }
@@ -155,11 +161,26 @@ impl PluginDspRegistry {
             .unwrap_or_default()
     }
 
+    /// Ids whose manifest allows more than one chain node. The chain
+    /// reconciler keeps duplicates only for these ids.
+    pub fn multi_node_ids(&self) -> Vec<String> {
+        self.nodes
+            .read()
+            .map(|g| {
+                g.iter()
+                    .filter(|n| n.allow_multiple_nodes)
+                    .map(|n| n.plugin_id.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Run a single node (audio-thread context). One broken plugin must not
     /// take the chain down: a failing node is logged once and, after
     /// `MAX_CONSECUTIVE_FAILURES` frames in a row, skipped.
     fn run_node(
         node: &DspNode,
+        node_index: Option<usize>,
         data: &mut Vec<f32>,
         channels: usize,
         sample_rate: u32,
@@ -176,6 +197,7 @@ impl PluginDspRegistry {
             channels,
             sample_rate,
             queued_ms,
+            node_index,
         };
         match instance.process_audio(&mut ctx) {
             Ok(ProcessStatus::Ok) => {
@@ -213,7 +235,7 @@ impl PluginDspRegistry {
             Err(_) => return,
         };
         for node in nodes.iter() {
-            Self::run_node(node, data, channels, sample_rate, queued_ms);
+            Self::run_node(node, None, data, channels, sample_rate, queued_ms);
         }
     }
 
@@ -223,6 +245,7 @@ impl PluginDspRegistry {
     pub fn process_one(
         &self,
         plugin_id: &str,
+        node_index: usize,
         data: &mut Vec<f32>,
         channels: usize,
         sample_rate: u32,
@@ -233,7 +256,14 @@ impl PluginDspRegistry {
             Err(_) => return,
         };
         if let Some(node) = nodes.iter().find(|n| n.plugin_id == plugin_id) {
-            Self::run_node(node, data, channels, sample_rate, queued_ms);
+            Self::run_node(
+                node,
+                Some(node_index),
+                data,
+                channels,
+                sample_rate,
+                queued_ms,
+            );
         }
     }
 }
@@ -256,14 +286,14 @@ impl PluginDspBridge {
     pub fn hook(&self) -> DspHook {
         let registry = self.registry.clone();
         Box::new(
-            move |node: &str, data: &mut Vec<f32>, channels: usize, queued_ms: f64| {
+            move |node: &str, node_index: usize, data: &mut Vec<f32>, channels: usize, queued_ms: f64| {
                 if !registry.is_active() {
                     return;
                 }
                 if node == CHAIN_NODE_ALL_PLUGINS {
                     registry.process_all(data, channels, 48_000, queued_ms);
                 } else if let Some(plugin_id) = node.strip_prefix(CHAIN_NODE_PLUGIN_PREFIX) {
-                    registry.process_one(plugin_id, data, channels, 48_000, queued_ms);
+                    registry.process_one(plugin_id, node_index, data, channels, 48_000, queued_ms);
                 }
             },
         )
@@ -323,6 +353,7 @@ mod tests {
             id.to_string(),
             first,
             None,
+            false,
             Arc::new(Mutex::new(PluginInstance::Wasm(Box::new(CountingNode {
                 manifest: PluginManifest {
                     id: id.to_string(),
@@ -411,8 +442,8 @@ mod tests {
         let bridge = PluginDspBridge::new(registry.clone());
         let mut hook = bridge.hook();
         let mut data = vec![0.5f32; 8];
-        hook(CHAIN_NODE_ALL_PLUGINS, &mut data, 1, 0.0);
-        hook("Plugin:anything", &mut data, 1, 0.0);
+        hook(CHAIN_NODE_ALL_PLUGINS, 0, &mut data, 1, 0.0);
+        hook("Plugin:anything", 0, &mut data, 1, 0.0);
         assert_eq!(data, vec![0.5f32; 8], "no nodes → data untouched");
     }
 
@@ -431,15 +462,15 @@ mod tests {
         let mut hook = bridge.hook();
 
         let mut data = vec![0.0f32; 4];
-        hook("Plugin:b", &mut data, 1, 0.0);
+        hook("Plugin:b", 0, &mut data, 1, 0.0);
         assert_eq!(a_calls.load(Ordering::SeqCst), 0);
         assert_eq!(b_calls.load(Ordering::SeqCst), 1);
         assert_eq!(data, vec![1.0f32; 4], "only plugin b ran");
 
-        hook("Plugin:missing", &mut data, 1, 0.0);
+        hook("Plugin:missing", 0, &mut data, 1, 0.0);
         assert_eq!(data, vec![1.0f32; 4], "unknown plugin node is a no-op");
 
-        hook(CHAIN_NODE_ALL_PLUGINS, &mut data, 1, 0.0);
+        hook(CHAIN_NODE_ALL_PLUGINS, 0, &mut data, 1, 0.0);
         assert_eq!(a_calls.load(Ordering::SeqCst), 1);
         assert_eq!(b_calls.load(Ordering::SeqCst), 2);
         assert_eq!(data, vec![3.0f32; 4], "legacy node runs every plugin");
