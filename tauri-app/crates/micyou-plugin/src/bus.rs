@@ -297,6 +297,8 @@ pub fn error_code(error: &PluginError) -> i32 {
         PluginError::NotLoaded(_) => 5,
         PluginError::LoadFailed(_) => 6,
         PluginError::ApiVersionMismatch { .. } => 7,
+        // Reuses the version-mismatch code: the plugin cannot run on this host.
+        PluginError::HostVersionTooOld { .. } => 7,
         PluginError::PermissionDenied(_) => 8,
         PluginError::AlreadyExists(_) => 9,
         PluginError::Runtime(_) => 10,

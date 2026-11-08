@@ -151,6 +151,11 @@ impl PluginHost {
                 return;
             }
         };
+        for (path, reason) in report.skipped {
+            // Version / platform / malformed-manifest rejections land here;
+            // keep the reason in the log so a user can act on it.
+            log::warn!("[plugins] skipped {}: {reason}", path.display());
+        }
         for entry in report.discovered {
             if entry.state.is_enabled() {
                 if let Err(e) = self.enable_plugin(&entry.manifest.id) {

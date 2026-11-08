@@ -32,6 +32,8 @@ pub enum PluginError {
     LoadFailed(String),
     /// The Host API version declared by the plugin is unsupported.
     ApiVersionMismatch { plugin: u32, host: u32 },
+    /// The plugin requires a newer MicYou host than this build.
+    HostVersionTooOld { required: String, host: String },
     /// A capability declared in the manifest was denied by the host policy.
     PermissionDenied(String),
     /// The plugin already exists / is already enabled (state conflicts).
@@ -60,6 +62,9 @@ impl fmt::Display for PluginError {
                     f,
                     "plugin requires Host API v{plugin}, host provides v{host}"
                 )
+            }
+            PluginError::HostVersionTooOld { required, host } => {
+                write!(f, "plugin requires MicYou >= {required}, host is {host}")
             }
             PluginError::PermissionDenied(cap) => write!(f, "capability not granted: {cap}"),
             PluginError::AlreadyExists(what) => write!(f, "plugin already exists: {what}"),

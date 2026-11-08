@@ -32,6 +32,11 @@ pub const MIN_SUPPORTED_API_VERSION: u32 = 1;
 /// they were built against; the host rejects incompatible ones.
 pub const HOST_API_VERSION: u32 = 2;
 
+/// MicYou host application version. `minHostVersion` is compared against this
+/// value, while `apiVersion` negotiates the plugin ABI. The workspace version
+/// bump updates both automatically.
+pub const HOST_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Plugin directory layout: the manifest file name.
 pub const MANIFEST_FILE_NAME: &str = "plugin.json";
 
@@ -348,8 +353,8 @@ pub struct PluginManifest {
     /// Search keywords for the plugin store / import.
     #[serde(default)]
     pub keywords: Vec<String>,
-    /// Minimum host API version required (major must not exceed the host's).
-    /// Example: "1.0.0".
+    /// Minimum MicYou host version required, as SemVer (e.g. "2.1.0").
+    /// The host rejects the manifest when its own version is older.
     #[serde(default)]
     pub min_host_version: Option<String>,
     /// Icon file name relative to the plugin directory (PNG recommended).
@@ -475,13 +480,15 @@ impl PluginManifest {
             }
         }
         if let Some(min) = &self.min_host_version {
-            let parsed = semver::Version::parse(min).map_err(|e| {
+            let required = semver::Version::parse(min).map_err(|e| {
                 PluginError::Validation(format!("invalid min_host_version {min:?}: {e}"))
             })?;
-            if parsed.major > HOST_API_VERSION as u64 {
-                return Err(PluginError::ApiVersionMismatch {
-                    plugin: self.api_version,
-                    host: HOST_API_VERSION,
+            let host = semver::Version::parse(HOST_VERSION)
+                .expect("the micyou-plugin crate version is valid SemVer");
+            if required > host {
+                return Err(PluginError::HostVersionTooOld {
+                    required: min.clone(),
+                    host: HOST_VERSION.to_string(),
                 });
             }
         }
@@ -616,6 +623,38 @@ mod tests {
                 host: HOST_API_VERSION
             }
         ));
+    }
+
+    #[test]
+    fn accepts_min_host_version_at_or_below_host() {
+        for required in ["1.0.0", HOST_VERSION] {
+            let json = format!(
+                r#"{{"id":"a.b","name":"x","version":"1.0.0","runtime":"wasm","entry":"x.wasm","minHostVersion":"{required}"}}"#
+            );
+            let manifest = PluginManifest::from_json(&json).unwrap();
+            assert_eq!(manifest.min_host_version.as_deref(), Some(required));
+        }
+    }
+
+    #[test]
+    fn rejects_min_host_version_newer_than_host() {
+        let host = semver::Version::parse(HOST_VERSION).unwrap();
+        let required = semver::Version::new(host.major, host.minor + 1, 0);
+        let json = format!(
+            r#"{{"id":"a.b","name":"x","version":"1.0.0","runtime":"wasm","entry":"x.wasm","minHostVersion":"{required}"}}"#
+        );
+        let error = PluginManifest::from_json(&json).unwrap_err();
+        assert!(
+            matches!(error, PluginError::HostVersionTooOld { .. }),
+            "a newer minor version must be rejected, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_min_host_version() {
+        let json = r#"{"id":"a.b","name":"x","version":"1.0.0","runtime":"wasm","entry":"x.wasm","minHostVersion":"not-semver"}"#;
+        let error = PluginManifest::from_json(json).unwrap_err();
+        assert!(matches!(error, PluginError::Validation(_)));
     }
 
     #[test]

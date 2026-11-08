@@ -203,7 +203,9 @@ pub trait HostApi: Send + Sync {
     fn locale(&self) -> String;
 
     /// Host identity and API version as a JSON string, e.g.
-    /// `{"name":"micyou","version":"2.0.0","apiVersion":1}` (no capability).
+    /// `{"name":"micyou","version":"2.1.1","apiVersion":2}`: `version` is the
+    /// running host app version, `apiVersion` is the host API version (`2`).
+    /// No capability required.
     fn host_info(&self) -> String;
 
     /// Read the current clipboard text (requires `clipboard.read`).

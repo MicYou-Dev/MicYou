@@ -44,8 +44,8 @@ pub use host::{sandbox_path, AudioStateSnapshot, DeviceSnapshot, HostApi, Messag
 pub use manager::{PluginEntry, PluginManager, PluginPersistedState, ScanReport};
 pub use manifest::{
     capabilities, platforms, ConfigField, ConfigSchema, DspDescriptor, PluginDependency, PluginKind,
-    PluginManifest, UiPanel, RuntimeKind, UiDescriptor, HOST_API_VERSION, KNOWN_CAPABILITIES,
-    MANIFEST_FILE_NAME,
+    PluginManifest, UiPanel, RuntimeKind, UiDescriptor, HOST_API_VERSION, HOST_VERSION,
+    KNOWN_CAPABILITIES, MANIFEST_FILE_NAME,
 };
 pub use plugin::{
     message_topic, require_capability, AudioFrameCtx, PluginEvent, PluginInstance, PluginRuntime,
