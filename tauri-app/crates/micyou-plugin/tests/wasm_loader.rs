@@ -196,6 +196,7 @@ fn wasm_plugin_loads_and_processes_audio() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let status = plugin.process_audio(&mut ctx).unwrap();
     assert_eq!(status, micyou_plugin::ProcessStatus::Ok);
@@ -212,6 +213,7 @@ fn wasm_plugin_loads_and_processes_audio() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let status = plugin.process_audio(&mut ctx2).unwrap();
     assert_eq!(status, micyou_plugin::ProcessStatus::Bypass);
@@ -341,6 +343,7 @@ fn wasm_plugin_missing_optional_exports_are_skipped() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 0.0,
+        node_index: None,
     };
     assert_eq!(
         plugin.process_audio(&mut ctx).unwrap(),

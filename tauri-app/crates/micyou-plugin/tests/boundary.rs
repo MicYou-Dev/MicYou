@@ -164,6 +164,7 @@ fn wasm_infinite_loop_is_stopped_by_fuel_metering() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let result = inst.process_audio(&mut ctx);
     assert!(
@@ -203,6 +204,7 @@ fn wasm_oversized_allocation_fails_gracefully() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let result = inst.process_audio(&mut ctx);
     assert!(
@@ -250,6 +252,7 @@ fn wasm_process_frame_buffer_is_reused_without_growth() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     for _ in 0..10_000 {
         assert_eq!(inst.process_audio(&mut ctx), Ok(ProcessStatus::Ok));
