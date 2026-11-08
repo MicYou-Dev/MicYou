@@ -232,7 +232,6 @@
       "desc": "点击配置音频效果喵~",
       "descPopup": "拖拽重新排序音频效果喵~",
       "reset": "重置为默认喵~",
-      "aecPinned": "回声消除固定位于链路首位喵~ 🔒",
       "AEC": "回声消除喵~ (AEC)",
       "NoiseReduction": "降噪喵~ 🔇",
       "Dereverb": "去混响喵~",

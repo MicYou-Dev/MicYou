@@ -234,7 +234,6 @@
       "desc": "Click to configure audio effects",
       "descPopup": "Drag to reorder audio effects",
       "reset": "Reset to Default",
-      "aecPinned": "Echo cancellation is fixed at the head of the chain",
       "AEC": "Acoustic Echo Cancellation",
       "NoiseReduction": "Noise Reduction",
       "Dereverb": "Dereverb",

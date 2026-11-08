@@ -179,11 +179,8 @@ impl Controls {
     /// Validate, persist to settings.json and apply a full settings value.
     pub fn apply_dsp_settings(&self, mut settings: AudioDspSettings) -> Result<(), String> {
         settings.normalize();
-        // AEC must always run first in the processing chain.
-        if let Some(pos) = settings.processing_chain.iter().position(|s| s == "AEC") {
-            let stage = settings.processing_chain.remove(pos);
-            settings.processing_chain.insert(0, stage);
-        }
+        // The chain keeps the user's order: AEC is an ordinary stage that can
+        // be moved anywhere, not a mandatory first node.
         // Keep the per-plugin chain nodes in sync with the live registry
         // (#347): a full write must neither drop active nor keep stale nodes.
         self.plugins.reconcile_settings_chain(&mut settings);

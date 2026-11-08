@@ -232,7 +232,6 @@
       "desc": "㩒箭頭重新排列音訊效果",
       "descPopup": "拖曳重新排列音訊效果",
       "reset": "重置為預設",
-      "aecPinned": "迴聲消除固定位於鏈路首位",
       "AEC": "迴聲消除 (AEC)",
       "NoiseReduction": "降噪",
       "Dereverb": "去迴響",

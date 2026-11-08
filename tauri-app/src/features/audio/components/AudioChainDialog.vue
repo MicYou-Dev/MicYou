@@ -47,22 +47,12 @@
                   : 'border-transparent hover:border-primary/30'
               "
             >
-              <template v-if="item !== 'AEC'">
-                <div
-                  @pointerdown.prevent="onPointerDown(index)"
-                  class="w-8 h-8 -ml-2 mr-1 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-surface-variant/50 rounded-lg group-hover:text-primary transition-colors opacity-50 group-hover:opacity-100 touch-none"
-                >
-                  <GripVertical class="w-5 h-5 text-on-surface-variant" />
-                </div>
-              </template>
-              <template v-else>
-                <div
-                  class="w-8 h-8 -ml-2 mr-1 flex items-center justify-center opacity-40"
-                  :title="$t('settings.audioChain.aecPinned')"
-                >
-                  <Lock class="w-4 h-4 text-on-surface-variant" />
-                </div>
-              </template>
+              <div
+                @pointerdown.prevent="onPointerDown(index)"
+                class="w-8 h-8 -ml-2 mr-1 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-surface-variant/50 rounded-lg group-hover:text-primary transition-colors opacity-50 group-hover:opacity-100 touch-none"
+              >
+                <GripVertical class="w-5 h-5 text-on-surface-variant" />
+              </div>
 
               <div
                 class="w-6 h-6 rounded-full bg-surface flex items-center justify-center text-xs font-bold text-on-surface-variant mr-3 shadow-inner border border-surface-variant/30 group-hover:text-primary group-hover:border-primary/50 transition-colors pointer-events-none"
@@ -90,7 +80,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onUnmounted } from 'vue';
 import { usePlugins } from '@/features/plugins/composables/usePlugins';
-import { X, GripVertical, RotateCcw, Lock, Puzzle } from '@lucide/vue';
+import { X, GripVertical, RotateCcw, Puzzle } from '@lucide/vue';
 import { useI18n } from 'vue-i18n';
 import {
   normalizeChain,
@@ -136,7 +126,7 @@ watch(
   async (newVal) => {
     if (newVal) {
       await pluginsState.refresh(); // 确保 DSP 插件列表最新（未进过插件页时缓存为空）
-      // 去重 + AEC 置顶/剔除 + 插件节点对齐（展开旧节点/剔除失效/补插缺失）
+      // 去重 + 插件节点对齐（展开旧节点/剔除失效/补插缺失）；AEC 保留原位
       localChain.value = normalizeChain(props.chain, activeDspPlugins.value, isAecSupported.value);
     }
   },
@@ -145,7 +135,6 @@ watch(
 const draggedIndex = ref<number>(-1);
 
 const onPointerDown = (index: number) => {
-  if (localChain.value[index] === 'AEC') return; // AEC 固定首位，不可拖动
   draggedIndex.value = index;
 
   if (typeof window !== 'undefined') {
@@ -167,7 +156,6 @@ const onPointerMove = (e: PointerEvent) => {
   if (row) {
     const hoverIndex = parseInt(row.getAttribute('data-index') || '-1', 10);
     if (hoverIndex !== -1 && hoverIndex !== draggedIndex.value) {
-      if (hoverIndex === 0 && localChain.value[0] === 'AEC') return; // 不允许排到 AEC 之前
       // Swap instantly
       const newChain = [...localChain.value];
       const draggedItem = newChain[draggedIndex.value];

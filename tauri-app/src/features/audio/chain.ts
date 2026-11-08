@@ -95,7 +95,8 @@ export function reconcilePluginNodes(chain: string[], activePlugins: ChainPlugin
 
 /**
  * UI 显示/编辑用的完整链归一化：
- * 去重 + AEC 置顶（不支持的平台移除）+ 插件节点对齐。
+ * 去重 + 插件节点对齐。AEC 只是普通节点，保留用户在链中的位置；
+ * 平台不支持 AEC 时移除，支持但缺失时补到链尾（不再强制置顶）。
  */
 export function normalizeChain(
   chain: string[],
@@ -114,8 +115,12 @@ export function normalizeChain(
     seen.add(item);
     return true;
   });
-  const rest = deduped.filter((i) => i !== 'AEC');
-  const base = isAecSupported ? ['AEC', ...rest] : rest;
+  let base = deduped;
+  if (!isAecSupported) {
+    base = deduped.filter((i) => i !== 'AEC');
+  } else if (!deduped.includes('AEC')) {
+    base = [...deduped, 'AEC'];
+  }
   return reconcilePluginNodes(base, activePlugins);
 }
 

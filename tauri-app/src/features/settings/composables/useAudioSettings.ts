@@ -49,13 +49,15 @@ function notifyOutputDevice(device: string) {
   );
 }
 
-/** AEC is pinned first where it is supported and dropped elsewhere. */
+/** AEC is a normal chain stage: keep its saved position, drop it on unsupported platforms. */
 function normalizeAec() {
   const chain = settings.processingChain ?? [];
-  settings.processingChain = isAecSupported.value
-    ? ['AEC', ...chain.filter((i) => i !== 'AEC')]
-    : chain.filter((i) => i !== 'AEC');
-  if (!isAecSupported.value) settings.aecEnabled = false;
+  if (!isAecSupported.value) {
+    settings.processingChain = chain.filter((i) => i !== 'AEC');
+    settings.aecEnabled = false;
+  } else if (!chain.includes('AEC')) {
+    settings.processingChain = [...chain, 'AEC'];
+  }
 }
 
 async function loadSettings() {
