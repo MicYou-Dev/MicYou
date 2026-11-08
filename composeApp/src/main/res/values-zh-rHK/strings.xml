@@ -18,6 +18,15 @@
     <string name="autoConfigLabel">自動配置音訊</string>
     <string name="autoStartDesc">應用程式啟動時自動開始串流</string>
     <string name="autoStartLabel">自動串流</string>
+    <string name="autoReconnectLabel">自動重連</string>
+    <string name="autoReconnectDesc">意外斷線後自動嘗試重新連線</string>
+    <string name="reconnectRetryCountLabel">重試次數</string>
+    <string name="reconnectRetryCountValue">%1$d 次</string>
+    <string name="reconnectIntervalLabel">重試間隔</string>
+    <string name="reconnectIntervalValue">%1$d 秒</string>
+    <string name="reconnectPeriodicLabel">定時重連</string>
+    <string name="reconnectPeriodicValue">%1$d 分鐘</string>
+    <string name="reconnectPeriodicOff">關閉</string>
     <string name="autoSourceAuto">自動 (推薦)</string>
     <string name="backgroundBlurLabel">模糊</string>
     <string name="backgroundBrightnessLabel">光暗度</string>

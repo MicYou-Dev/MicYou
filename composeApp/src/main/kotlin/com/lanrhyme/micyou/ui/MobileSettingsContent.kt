@@ -108,6 +108,7 @@ import com.lanrhyme.micyou.ui.dialog.ContributorsDialog
 import com.lanrhyme.micyou.ui.dialog.SponsorsDialog
 import com.lanrhyme.micyou.util.AppLanguage
 import com.lanrhyme.micyou.util.getAppVersion
+import com.lanrhyme.micyou.util.getString
 import com.lanrhyme.micyou.util.OpenSourceLibrariesList
 import com.lanrhyme.micyou.viewmodel.AppUiState
 import com.lanrhyme.micyou.viewmodel.MainViewModel
@@ -303,6 +304,84 @@ private fun LazyListScope.generalSettingsItems(
                 hazeState = hazeState,
                 enableHaze = enableHaze
             )
+        }
+
+        items.add { isFirst, isLast ->
+            ExpressiveSettingsSwitchItem(
+                headline = stringResource(R.string.autoStartLabel),
+                supporting = stringResource(R.string.autoStartDesc),
+                checked = state.autoStart,
+                onCheckedChange = { viewModel.setAutoStart(it) },
+                isFirst = isFirst,
+                isLast = isLast,
+                containerColor = containerColor,
+                hazeState = hazeState,
+                enableHaze = enableHaze
+            )
+        }
+
+        items.add { isFirst, isLast ->
+            ExpressiveSettingsSwitchItem(
+                headline = stringResource(R.string.autoReconnectLabel),
+                supporting = stringResource(R.string.autoReconnectDesc),
+                checked = state.autoReconnect,
+                onCheckedChange = { viewModel.setAutoReconnect(it) },
+                isFirst = isFirst,
+                isLast = isLast,
+                containerColor = containerColor,
+                hazeState = hazeState,
+                enableHaze = enableHaze
+            )
+        }
+
+        if (state.autoReconnect) {
+            items.add { isFirst, isLast ->
+                ExpressiveSettingsDropdownItem(
+                    headline = stringResource(R.string.reconnectRetryCountLabel),
+                    selected = state.reconnectRetryCount,
+                    options = listOf(1, 2, 3, 5, 10, 20),
+                    labelProvider = { getString(R.string.reconnectRetryCountValue, it) },
+                    onSelect = { viewModel.setReconnectRetryCount(it) },
+                    isFirst = isFirst,
+                    isLast = isLast,
+                    containerColor = containerColor,
+                    hazeState = hazeState,
+                    enableHaze = enableHaze
+                )
+            }
+
+            items.add { isFirst, isLast ->
+                ExpressiveSettingsDropdownItem(
+                    headline = stringResource(R.string.reconnectIntervalLabel),
+                    selected = state.reconnectIntervalSeconds,
+                    options = listOf(3, 5, 10, 15, 30, 60),
+                    labelProvider = { getString(R.string.reconnectIntervalValue, it) },
+                    onSelect = { viewModel.setReconnectIntervalSeconds(it) },
+                    isFirst = isFirst,
+                    isLast = isLast,
+                    containerColor = containerColor,
+                    hazeState = hazeState,
+                    enableHaze = enableHaze
+                )
+            }
+
+            items.add { isFirst, isLast ->
+                ExpressiveSettingsDropdownItem(
+                    headline = stringResource(R.string.reconnectPeriodicLabel),
+                    selected = state.reconnectPeriodicMinutes,
+                    options = listOf(0, 1, 2, 5, 10, 30, 60),
+                    labelProvider = {
+                        if (it == 0) getString(R.string.reconnectPeriodicOff)
+                        else getString(R.string.reconnectPeriodicValue, it)
+                    },
+                    onSelect = { viewModel.setReconnectPeriodicMinutes(it) },
+                    isFirst = isFirst,
+                    isLast = isLast,
+                    containerColor = containerColor,
+                    hazeState = hazeState,
+                    enableHaze = enableHaze
+                )
+            }
         }
 
         items.add { isFirst, isLast ->

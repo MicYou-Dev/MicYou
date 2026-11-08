@@ -106,6 +106,10 @@ data class AppUiState(
     val useExpressiveShapes: Boolean = true,
     val language: AppLanguage = AppLanguage.System,
     val autoStart: Boolean = false,
+    val autoReconnect: Boolean = false,
+    val reconnectRetryCount: Int = 5,
+    val reconnectIntervalSeconds: Int = 5,
+    val reconnectPeriodicMinutes: Int = 5,
     val keepScreenOn: Boolean = false,
     val autoCheckUpdate: Boolean = true,
     val useMirrorDownload: Boolean = false,
@@ -232,6 +236,10 @@ class MainViewModel : ViewModel() {
                         useExpressiveShapes = settingsState.useExpressiveShapes,
                         language = settingsState.language,
                         autoStart = settingsState.autoStart,
+                        autoReconnect = settingsState.autoReconnect,
+                        reconnectRetryCount = settingsState.reconnectRetryCount,
+                        reconnectIntervalSeconds = settingsState.reconnectIntervalSeconds,
+                        reconnectPeriodicMinutes = settingsState.reconnectPeriodicMinutes,
                         keepScreenOn = settingsState.keepScreenOn,
                         autoCheckUpdate = settingsState.autoCheckUpdate,
                         useMirrorDownload = settingsState.useMirrorDownload,
@@ -291,6 +299,15 @@ class MainViewModel : ViewModel() {
     fun setUseExpressiveShapes(enabled: Boolean) = settingsViewModel.setUseExpressiveShapes(enabled)
     fun setLanguage(language: AppLanguage) = settingsViewModel.setLanguage(language)
     fun setAutoStart(enabled: Boolean) = settingsViewModel.setAutoStart(enabled)
+    fun setAutoReconnect(enabled: Boolean) {
+        settingsViewModel.setAutoReconnect(enabled)
+        audioStreamViewModel.onAutoReconnectChanged()
+    }
+    fun setReconnectRetryCount(count: Int) = settingsViewModel.setReconnectRetryCount(count)
+    fun setReconnectIntervalSeconds(seconds: Int) = settingsViewModel.setReconnectIntervalSeconds(seconds)
+    fun setReconnectPeriodicMinutes(minutes: Int) = settingsViewModel.setReconnectPeriodicMinutes(minutes)
+    /** Called once the microphone permission is available at startup. */
+    fun onStartupPermissionsGranted() = audioStreamViewModel.onStartupPermissionsGranted()
     fun setKeepScreenOn(enabled: Boolean) = settingsViewModel.setKeepScreenOn(enabled)
     fun setVisualizerStyle(style: VisualizerStyle) = settingsViewModel.setVisualizerStyle(style)
     fun setAutoCheckUpdate(enabled: Boolean) = settingsViewModel.setAutoCheckUpdate(enabled)

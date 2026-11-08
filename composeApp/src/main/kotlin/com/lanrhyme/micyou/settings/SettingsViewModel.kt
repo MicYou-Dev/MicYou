@@ -44,6 +44,10 @@ data class SettingsUiState(
     val useExpressiveShapes: Boolean = true,
     val language: AppLanguage = AppLanguage.System,
     val autoStart: Boolean = false,
+    val autoReconnect: Boolean = false,
+    val reconnectRetryCount: Int = 5,
+    val reconnectIntervalSeconds: Int = 5,
+    val reconnectPeriodicMinutes: Int = 5,
     val keepScreenOn: Boolean = false,
     val autoCheckUpdate: Boolean = true,
     val useMirrorDownload: Boolean = false,
@@ -80,6 +84,10 @@ class SettingsViewModel : ViewModel() {
             AppLanguage.System
         }
     val savedAutoStart = settings.getBoolean("auto_start", false)
+    val savedAutoReconnect = settings.getBoolean("auto_reconnect", false)
+    val savedReconnectRetryCount = settings.getInt("reconnect_retry_count", 5)
+    val savedReconnectIntervalSeconds = settings.getInt("reconnect_interval_seconds", 5)
+    val savedReconnectPeriodicMinutes = settings.getInt("reconnect_periodic_minutes", 5)
     val savedKeepScreenOn = settings.getBoolean("keep_screen_on", false)
     val savedVisualizerStyleName = settings.getString("visualizer_style", VisualizerStyle.VolumeRing.name)
     val savedVisualizerStyle = try {
@@ -111,6 +119,10 @@ class SettingsViewModel : ViewModel() {
                 useExpressiveShapes = savedUseExpressiveShapes,
                 language = initialLanguage,
                 autoStart = savedAutoStart,
+                autoReconnect = savedAutoReconnect,
+                reconnectRetryCount = savedReconnectRetryCount,
+                reconnectIntervalSeconds = savedReconnectIntervalSeconds,
+                reconnectPeriodicMinutes = savedReconnectPeriodicMinutes,
                 keepScreenOn = savedKeepScreenOn,
                 visualizerStyle = savedVisualizerStyle,
                 backgroundSettings = BackgroundSettings(
@@ -167,6 +179,29 @@ class SettingsViewModel : ViewModel() {
     fun setAutoStart(enabled: Boolean) {
         _uiState.update { it.copy(autoStart = enabled) }
         settings.putBoolean("auto_start", enabled)
+    }
+
+    fun setAutoReconnect(enabled: Boolean) {
+        _uiState.update { it.copy(autoReconnect = enabled) }
+        settings.putBoolean("auto_reconnect", enabled)
+    }
+
+    fun setReconnectRetryCount(count: Int) {
+        val safe = count.coerceIn(1, 20)
+        _uiState.update { it.copy(reconnectRetryCount = safe) }
+        settings.putInt("reconnect_retry_count", safe)
+    }
+
+    fun setReconnectIntervalSeconds(seconds: Int) {
+        val safe = seconds.coerceIn(1, 120)
+        _uiState.update { it.copy(reconnectIntervalSeconds = safe) }
+        settings.putInt("reconnect_interval_seconds", safe)
+    }
+
+    fun setReconnectPeriodicMinutes(minutes: Int) {
+        val safe = minutes.coerceIn(0, 60)
+        _uiState.update { it.copy(reconnectPeriodicMinutes = safe) }
+        settings.putInt("reconnect_periodic_minutes", safe)
     }
 
     fun setKeepScreenOn(enabled: Boolean) {
