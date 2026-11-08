@@ -35,6 +35,8 @@
 - Customize Material 3 interfaces with light/dark themes, dynamic colors, custom backgrounds, desktop pocket mode, system tray controls, and multiple languages.
 - Share connection, DSP, language, and theme preferences between the desktop GUI, CLI, and TUI.
 - Extend functionality with a dual-runtime plugin system (Native and WASM) and an in-app marketplace for custom DSP nodes, soundpads, and control widgets.
+- Connect hands-free: the Android client can stream on launch and retry automatically after an unexpected disconnect, with configurable attempts, intervals, and periodic retries.
+- Keep plugins current: the desktop app checks for plugin updates once in the background at startup and shows the result in Settings → Plugins.
 
 ## Screenshots
 

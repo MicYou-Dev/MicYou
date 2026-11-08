@@ -68,7 +68,7 @@ RePlugin / Shadow / VirtualAPK 等动态插件框架面向「应用级插件化�
 | 跨端消息协议 | ✅ | ✅（阶段 1） | 同一 protobuf |
 | 插件总线（本地） | ✅ | ✅（阶段 1） | 同一语义 |
 | 插件总线（跨端） | ✅ | ✅（阶段 3） | 同一传输协议 |
-| DSP 链节点 | ✅（`Plugins` 链节点） | 规划 | 安卓侧处理链在 AudioRecord 管线内 |
+| DSP 链节点 | ✅（逐插件 `Plugin:<id>` 节点，可选 `allowMultipleNodes`） | 规划 | 安卓侧处理链在 AudioRecord 管线内 |
 | UI 按钮面板（`ui.route=buttons`） | ✅ | 规划 | 音效板等声明式面板 |
 | 专属设置页（`ui.panels`） | ✅ | 规划 | 沙箱 iframe + postMessage 桥 |
 | 全局快捷键（register_hotkey） | ✅ | 规划 | 系统级快捷键消息 |
@@ -82,7 +82,7 @@ RePlugin / Shadow / VirtualAPK 等动态插件框架面向「应用级插件化�
 - **ABI 版本**（Native）：`MPL_ABI_VERSION`（当前为 1）保护结构体基础布局；破坏性变更才会升级 ABI 版本
 - **Host 函数表追加式演进**：`mpl_host_api_t` 新字段（如 API v2 的控制面系列接口）严格追加在 `ctx` 之后，禁止插入中间——旧版 Native 插件读取已有字段的偏移保持不变，无需重新编译
 - **生命周期解耦**：插件运行时与 GUI 界面彻底解耦，无论在 GUI、CLI 还是 TUI 启动服务端，核心启动流程均会自动加载并执行已启用的插件，支持无头环境运行
-- **minHostVersion**：插件声明所需最低宿主 API 版本（semver），major 超过宿主版本即拒绝加载
+- **minHostVersion**：插件声明所需最低 MicYou 宿主应用版本（SemVer，例如 `2.1.0`）。宿主把自身版本（`HOST_VERSION`，由工作区版本自动同步）与它做完整的三段比较，低于要求即拒绝加载；`major/minor/patch` 任一段不满足都会被拒绝，而不是只比较 major
 - **WASM 导入表**：新增导入不影响不引用它的旧插件；导入签名不匹配的调用在宿主侧报错而非崩溃
 - **线协议**：`MessageWrapper` 采用 proto3 未知字段兼容——旧客户端不识别 `pluginMessage` 字段时自动跳过，新字段只在双方都支持时生效
 - **错误码**：wire 错误码（0-12）冻结，新增错误只追加

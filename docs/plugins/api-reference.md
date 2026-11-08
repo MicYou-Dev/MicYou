@@ -4,9 +4,9 @@
 
 ## Host API（宿主向插件提供的服务）
 
-API 版本：`HOST_API_VERSION = 1`（见 manifest `apiVersion`）
+API 版本：`HOST_API_VERSION = 2`，`MIN_SUPPORTED_API_VERSION = 1`（见 manifest `apiVersion`）
 - 追加式演进：**新字段只能加在 `mpl_host_api_t` 的 `ctx` 之后**，禁止插入中间，旧插件按旧偏移仍能正确读取
-- manifest `minHostVersion` 声明插件所需的最低宿主 API 版本，major 超过宿主版本即拒绝加载
+- manifest `minHostVersion` 声明插件所需的最低 **MicYou 宿主应用版本**（SemVer，例如 `2.1.0`）；当宿主版本低于该值时拒绝加载。它和 `apiVersion` 是两套独立协商：`apiVersion` 管 Host API / ABI 版本区间，`minHostVersion` 管具体应用版本
 - 插件能力（capabilities）在 manifest 中声明，宿主在每次调用时强制检查，越权返回 `MPL_ERR_PERMISSION`
 
 ### 调用约定与并发安全约束
@@ -118,7 +118,7 @@ typedef struct mpl_host_api {
 - `host_info` 返回：
 
 ```json
-{ "name": "micyou", "version": "2.0.0", "apiVersion": 1 }
+{ "name": "micyou", "version": "2.1.1", "apiVersion": 2 }
 ```
 
 ### play_sound（音频播放）
@@ -212,6 +212,7 @@ WASM 导入签名：`(panel_id_ptr: i32, icon_ptr: i32) -> ()`
 | `micyou_plugin_init(host)` | 是 | 保存 host 表，读取配置，返回结果码 |
 | `micyou_plugin_deinit` | 是 | 清理（宿主卸载库前调用一次） |
 | `micyou_plugin_process(data, samples, channels, queued_ms, bypass)` | 否 | 实时 DSP |
+| `micyou_plugin_process_node(data, samples, channels, queued_ms, node_index, bypass)` | 否 | 多节点实时 DSP；manifest 声明 `dsp.allowMultipleNodes` 时优先调用，`node_index` 为同名 `Plugin:<id>` 节点在链中的 0-based 序号 |
 | `micyou_plugin_handle_event(type, json)` | 否 | 事件通知 |
 | `micyou_plugin_handle_message(source, topic, payload, len)` | 否 | 跨端消息 |
 
@@ -275,7 +276,7 @@ message PluginMessage {
 | 4 | unknown plugin |
 | 5 | not loaded |
 | 6 | load failed |
-| 7 | api version mismatch |
+| 7 | api / host version mismatch（`apiVersion` 超出宿主支持区间，或宿主版本低于 `minHostVersion`） |
 | 8 | permission denied（能力未授予） |
 | 9 | already exists |
 | 10 | runtime error（含 WASM trap / 燃料耗尽） |

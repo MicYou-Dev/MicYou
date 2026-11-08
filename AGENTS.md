@@ -37,6 +37,7 @@ flowchart LR
 - `service/AudioService.kt`: foreground service, type `microphone` while streaming and `mediaPlayback` while idle; returns `START_NOT_STICKY` and never reschedules itself (exact alarms throw on Android 14+); swiping the app away stops streaming, removes the notification and stops the service
 - `service/MicYouTileService.kt`: Quick Settings tile that starts and stops streaming
 - Settings live in SharedPreferences (`android_mic_prefs`), not DataStore, modelled as enums in `audio/AudioSettings.kt`; wire constants live in `util/Constants.kt` and `network/Protocol.kt`
+- `AudioStreamViewModel` owns the connection policy: `auto_start` connects once the microphone permission is granted at launch, and `auto_reconnect` retries an unexpected disconnect `reconnect_retry_count` times every `reconnect_interval_seconds`, then repeats the burst every `reconnect_periodic_minutes` (0 = off). An explicit stop or a manual connect cancels the retry loop; retries stay silent and only the final failure opens the error dialog
 - Haze is reached only through `ui/compose/haze/HazeBridge.kt`, which exists twice: `src/normal` maps onto Haze 2 `hazeBlur`, `src/compat` draws a plain background
 
 ### api21 compat build
@@ -64,11 +65,12 @@ Workspace crates under `tauri-app/crates/`:
 Data path:
 
 - `transport::udp` validates datagrams into an `mpsc(128)` channel
-- `server::audio_pipeline` runs on its own thread: the jitter buffer reorders and FEC-recovers, the prebuffer is sized in time (100 ms), PCM is decoded (16/8/float/24-bit, non-finite samples zeroed), then the DSP chain runs with AEC pinned first
+- `server::audio_pipeline` runs on its own thread: the jitter buffer reorders and FEC-recovers, the prebuffer is sized in time (100 ms), PCM is decoded (16/8/float/24-bit, non-finite samples zeroed), then the DSP chain runs in the order stored in `settings.json` — AEC is an ordinary, movable stage, not a pinned first node
 - `server::output` owns the cpal device on a dedicated `micyou-output` thread fed by a channel; queued latency is published through an atomic, and shutdown waits up to 1 s for the thread
 - The AEC far-end reference is captured per platform inside `micyou-audio` only: WASAPI render loopback on Windows, the PipeWire sink monitor on Linux, and on macOS a Core Audio process tap (`macos_tap.rs`, `AudioHardwareCreateProcessTap`, 14.2+) that falls back to the BlackHole cpal capture on older systems. `aec.rs` owns the failure codes and `aec_reference_availability()`, the single answer the GUI, CLI and TUI all read; keep platform policy out of `micyou-core`
 - `macos_tap.rs` resolves Core Audio with `dlopen`/`dlsym` so the binary still loads where the symbol is absent, and needs `NSAudioCaptureUsageDescription` in `Info.plist` - without it macOS returns silence instead of failing. It re-reads the tap rate while running, so switching the output device cannot leave a stale resampling ratio
 - Plugin DSP nodes that fail 50 frames in a row are quarantined; non-finite plugin output is zeroed
+- The GUI runs one plugin update check in a background thread two seconds after startup; `PluginHost::cached_updates` stores the result and `get_cached_plugin_updates` feeds the plugin page, so startup never waits on the network
 
 Frontend integration:
 
