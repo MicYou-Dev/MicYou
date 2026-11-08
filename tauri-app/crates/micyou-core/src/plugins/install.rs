@@ -536,7 +536,7 @@ impl PluginHost {
             .map_err(|e| lock_err(e).to_string())?
             .entries();
         let client = http_client(MANIFEST_FETCH_TIMEOUT)?;
-        let updates = entries
+        let updates: Vec<PluginUpdate> = entries
             .into_iter()
             .filter_map(|entry| {
                 let manifest = entry.manifest;
