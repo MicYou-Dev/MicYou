@@ -157,6 +157,12 @@ pub async fn check_plugin_updates(app: AppHandle) -> Result<Vec<PluginUpdate>, S
     blocking(move || plugins.check_updates()).await
 }
 
+/// Updates found by the background startup check, or `null` before it ran.
+#[tauri::command]
+pub fn get_cached_plugin_updates(state: State<'_, ServerState>) -> Option<Vec<PluginUpdate>> {
+    state.plugins.cached_updates()
+}
+
 #[tauri::command]
 pub async fn update_plugin(app: AppHandle, id: String) -> Result<String, String> {
     let plugins = app.state::<ServerState>().plugins.clone();

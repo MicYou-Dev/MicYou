@@ -66,6 +66,10 @@ pub struct PluginHost {
     hotkeys: HotkeyService,
     host: SharedHost,
     panel_icons: PanelIcons,
+    /// Result of the last update check: `None` until one has run. The GUI
+    /// fills this from a background startup check so opening the plugin page
+    /// does not have to wait for the network.
+    update_cache: Mutex<Option<Vec<install::PluginUpdate>>>,
     /// Set once by [`crate::server::ServerState::new`].
     controls: OnceLock<Controls>,
     server: ServerHandles,
@@ -120,6 +124,7 @@ impl PluginHost {
             sound: sound_player::SoundPlayer::new(server.audio_output.clone()),
             host,
             panel_icons: Mutex::new(HashMap::new()),
+            update_cache: Mutex::new(None),
             controls: OnceLock::new(),
             server,
         })

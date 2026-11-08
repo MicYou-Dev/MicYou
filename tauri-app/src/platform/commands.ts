@@ -119,6 +119,7 @@ export interface Commands {
   install_plugin_from_url: { args: { id: string; zipUrl: string }; result: string };
   cancel_plugin_download: { args: { id: string }; result: void };
   check_plugin_updates: { args: NoArgs; result: PluginUpdate[] };
+  get_cached_plugin_updates: { args: NoArgs; result: PluginUpdate[] | null };
   update_plugin: { args: { id: string }; result: string };
   import_plugin: { args: { source: string }; result: string };
 

@@ -108,7 +108,7 @@ impl From<PluginManifest> for PluginPreview {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginUpdate {
     pub id: String,
@@ -558,7 +558,24 @@ impl PluginHost {
                 })
             })
             .collect();
+        self.store_updates(&updates);
         Ok(updates)
+    }
+
+    /// Updates found by the last check, or `None` when no check has run yet.
+    /// The GUI starts one in the background so it can show them instantly.
+    pub fn cached_updates(&self) -> Option<Vec<PluginUpdate>> {
+        self.update_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn store_updates(&self, updates: &[PluginUpdate]) {
+        *self
+            .update_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(updates.to_vec());
     }
 
     /// Replace an installed plugin with the version its `updateUrl` points
