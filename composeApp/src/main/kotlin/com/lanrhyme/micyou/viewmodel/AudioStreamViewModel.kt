@@ -485,7 +485,12 @@ class AudioStreamViewModel : ViewModel() {
 
     /** Cancel a pending retry immediately when the option is switched off. */
     fun onAutoReconnectChanged() {
-        if (!autoReconnectEnabled()) cancelAutoReconnect()
+        if (!autoReconnectEnabled()) {
+            cancelAutoReconnect()
+        } else if (_uiState.value.streamState == StreamState.Error) {
+            // Switched on while already disconnected: start retrying right away.
+            scheduleAutoReconnect()
+        }
     }
 
     private fun autoReconnectEnabled(): Boolean =
