@@ -96,7 +96,7 @@ fn broadcast_strides(ish: &[u32], osh: &[u32]) -> [usize; MAX_NDIM] {
 pub fn fast_exp(x: f32) -> f32 {
     const LN2_HI: f32 = 0.6931457519531250; // trailing zero bits → k*LN2_HI exact
     const LN2_LO: f32 = 1.4286068203094172e-6;
-    const LOG2E: f32 = 1.4426950408889634;
+    const LOG2E: f32 = std::f32::consts::LOG2_E;
     // Fully branchless (clamp + copysign) so callers vectorize: outside the
     // f32-normal range the result saturates to ~1.7e38 / ~2e-38 — within
     // 1e-37 absolute of the true expf value, i.e. far below any tolerance
