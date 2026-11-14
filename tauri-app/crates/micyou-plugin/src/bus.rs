@@ -297,6 +297,8 @@ pub fn error_code(error: &PluginError) -> i32 {
         PluginError::NotLoaded(_) => 5,
         PluginError::LoadFailed(_) => 6,
         PluginError::ApiVersionMismatch { .. } => 7,
+        // Reuses the version-mismatch code: the plugin cannot run on this host.
+        PluginError::HostVersionTooOld { .. } => 7,
         PluginError::PermissionDenied(_) => 8,
         PluginError::AlreadyExists(_) => 9,
         PluginError::Runtime(_) => 10,
@@ -315,7 +317,7 @@ pub fn error_message_for(code: i32) -> String {
         4 => "unknown plugin".to_string(),
         5 => "not loaded".to_string(),
         6 => "load failed".to_string(),
-        7 => "api version mismatch".to_string(),
+        7 => "api or host version mismatch".to_string(),
         8 => "permission denied".to_string(),
         9 => "already exists".to_string(),
         10 => "runtime error".to_string(),
@@ -446,5 +448,12 @@ mod tests {
         assert_eq!(error_code(&PluginError::PermissionDenied("".into())), 8);
         assert_eq!(error_code(&PluginError::Runtime("".into())), 10);
         assert_eq!(error_code(&PluginError::MessageDelivery("".into())), 11);
+        assert_eq!(
+            error_code(&PluginError::HostVersionTooOld {
+                required: "9.0.0".into(),
+                host: "2.1.1".into()
+            }),
+            7
+        );
     }
 }

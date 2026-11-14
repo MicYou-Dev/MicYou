@@ -234,7 +234,6 @@
       "desc": "点击以配置音频效果",
       "descPopup": "拖动以重新排序音频效果",
       "reset": "重置为默认",
-      "aecPinned": "回声消除固定位于链路首位",
       "AEC": "回声消除 (AEC)",
       "NoiseReduction": "降噪",
       "Dereverb": "去混响",

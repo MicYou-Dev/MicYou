@@ -270,7 +270,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="flex items-center gap-2 overflow-hidden text-xs text-on-surface-variant font-medium opacity-80 pt-1">
-        <template v-for="(item, index) in displayChain" :key="item">
+        <template v-for="(item, index) in displayChain" :key="`${item}-${index}`">
           <span class="whitespace-nowrap">{{ chainItemLabel(item) }}</span>
           <ArrowRight v-if="index < displayChain.length - 1" class="w-3 h-3 shrink-0" />
         </template>

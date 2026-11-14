@@ -981,7 +981,7 @@ impl TuiApp {
         );
     }
 
-    /// Processing chain: numbered stages with the pinned AEC lock badge.
+    /// Processing chain: numbered stages in the user's stored order.
     fn render_chain(&mut self, frame: &mut Frame, area: Rect) {
         let theme = self.theme;
         let items: Vec<ListItem> = self
@@ -990,46 +990,33 @@ impl TuiApp {
             .iter()
             .enumerate()
             .map(|(i, stage)| {
-                let (label, is_aec) = match stage.as_str() {
-                    "AEC" => (format!("{} (AEC)", self.t("aec")), true),
-                    "NoiseReduction" => (format!("{} (NR)", self.t("noise_reduction")), false),
-                    "Dereverb" => (self.t("dereverb").to_string(), false),
-                    "Equalizer" => ("Equalizer".to_string(), false),
-                    "Amplifier" => (format!("{} (AMP)", self.t("gain")), false),
-                    "AGC" => (format!("{} (AGC)", self.t("agc")), false),
-                    "VAD" => (format!("{} (VAD)", self.t("vad")), false),
+                let label = match stage.as_str() {
+                    "AEC" => format!("{} (AEC)", self.t("aec")),
+                    "NoiseReduction" => format!("{} (NR)", self.t("noise_reduction")),
+                    "Dereverb" => self.t("dereverb").to_string(),
+                    "Equalizer" => "Equalizer".to_string(),
+                    "Amplifier" => format!("{} (AMP)", self.t("gain")),
+                    "AGC" => format!("{} (AGC)", self.t("agc")),
+                    "VAD" => format!("{} (VAD)", self.t("vad")),
                     other => {
                         // Per-plugin DSP node `Plugin:<id>` (issue #347)
                         if let Some(plugin_id) =
                             other.strip_prefix(micyou_core::micyou_audio::dsp::PLUGIN_NODE_PREFIX)
                         {
-                            (format!("Plugin: {plugin_id}"), false)
+                            format!("Plugin: {plugin_id}")
                         } else {
-                            (other.to_string(), false)
+                            other.to_string()
                         }
                     }
                 };
-                let mut spans = vec![
+                let spans = vec![
                     Span::styled(
                         format!("{:>2}", i + 1),
                         Style::default().fg(theme.secondary.to_color()),
                     ),
                     Span::raw("  "),
+                    Span::styled(label, Style::default()),
                 ];
-                if is_aec {
-                    spans.push(Span::styled(
-                        format!("🔒 {label}"),
-                        Style::default()
-                            .fg(theme.tertiary.to_color())
-                            .add_modifier(Modifier::BOLD),
-                    ));
-                    spans.push(Span::styled(
-                        format!("  {}", self.t("pinned")),
-                        Style::default().fg(theme.secondary.to_color()),
-                    ));
-                } else {
-                    spans.push(Span::styled(label, Style::default()));
-                }
                 ListItem::new(Line::from(spans))
             })
             .collect();
@@ -1447,7 +1434,7 @@ fn handle_key(app: &mut TuiApp, key: KeyEvent, state: &ServerState) -> bool {
             4 => app.log_offset = app.log_offset.saturating_add(1),
             2 => {
                 let chain = &mut app.settings.processing_chain;
-                if app.chain_index > 1 {
+                if app.chain_index > 0 {
                     chain.swap(app.chain_index, app.chain_index - 1);
                     app.chain_index -= 1;
                     sync_settings(app, state);
@@ -1465,7 +1452,7 @@ fn handle_key(app: &mut TuiApp, key: KeyEvent, state: &ServerState) -> bool {
             4 => app.log_offset = app.log_offset.saturating_sub(1),
             2 => {
                 let chain = &mut app.settings.processing_chain;
-                if app.chain_index + 1 < chain.len() && app.chain_index >= 1 {
+                if app.chain_index + 1 < chain.len() {
                     chain.swap(app.chain_index, app.chain_index + 1);
                     app.chain_index += 1;
                     sync_settings(app, state);

@@ -25,6 +25,15 @@
     <string name="autoConfigLabel">Auto Configure Audio</string>
     <string name="autoStartDesc">Start streaming automatically on app launch</string>
     <string name="autoStartLabel">Auto Start</string>
+    <string name="autoReconnectLabel">Auto reconnect</string>
+    <string name="autoReconnectDesc">Retry automatically after an unexpected disconnect</string>
+    <string name="reconnectRetryCountLabel">Retry attempts</string>
+    <string name="reconnectRetryCountValue">%1$d times</string>
+    <string name="reconnectIntervalLabel">Retry interval</string>
+    <string name="reconnectIntervalValue">%1$d s</string>
+    <string name="reconnectPeriodicLabel">Periodic reconnect</string>
+    <string name="reconnectPeriodicValue">%1$d min</string>
+    <string name="reconnectPeriodicOff">Off</string>
     <string name="autoSourceAuto">Auto (Recommended)</string>
     <string name="backgroundBlurLabel">Blur</string>
     <string name="backgroundBrightnessLabel">Brightness</string>

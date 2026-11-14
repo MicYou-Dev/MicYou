@@ -341,6 +341,7 @@ fn native_plugin_loads_and_processes_audio() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let status = instance.process_audio(&mut ctx).expect("process ok");
     assert_eq!(status, micyou_plugin::ProcessStatus::Ok);
@@ -358,6 +359,7 @@ fn native_plugin_loads_and_processes_audio() {
         channels: 1,
         sample_rate: 48000,
         queued_ms: 10.0,
+        node_index: None,
     };
     let status = instance.process_audio(&mut ctx2).unwrap();
     assert_eq!(status, micyou_plugin::ProcessStatus::Bypass);

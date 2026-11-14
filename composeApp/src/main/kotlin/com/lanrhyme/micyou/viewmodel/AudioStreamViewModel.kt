@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -104,6 +105,12 @@ class AudioStreamViewModel : ViewModel() {
     private var isStartStreamRequestPending = false
     private var isStopStreamRequestPending = false
 
+    /** One-shot guard for the "connect on launch" option. */
+    private var startupAutoConnectConsumed = false
+    /** Incremented whenever pending auto-reconnect attempts must be abandoned. */
+    private var reconnectGeneration = 0L
+    private var reconnectJob: Job? = null
+
     init {
         loadSettings()
         setupAudioEngineObservers()
@@ -158,7 +165,15 @@ class AudioStreamViewModel : ViewModel() {
     private fun setupAudioEngineObservers() {
         auxiliaryScope.launch {
             _audioEngine.streamState.collect { state ->
+                val previous = _uiState.value.streamState
                 _uiState.update { it.copy(streamState = state) }
+                // An unexpected disconnect (or a failed attempt) surfaces as Error; a
+                // user stop ends in Idle, which must disarm the retry loop instead.
+                when (state) {
+                    StreamState.Error -> if (previous != StreamState.Error) scheduleAutoReconnect()
+                    StreamState.Idle -> if (previous != StreamState.Idle) cancelAutoReconnect()
+                    StreamState.Connecting, StreamState.Streaming -> Unit
+                }
             }
         }
 
@@ -213,6 +228,8 @@ class AudioStreamViewModel : ViewModel() {
         }
 
         isStartStreamRequestPending = true
+        // A manual start supersedes any armed auto-reconnect loop.
+        cancelAutoReconnect()
         auxiliaryScope.launch {
             try {
                 startStreamInternal()
@@ -222,7 +239,7 @@ class AudioStreamViewModel : ViewModel() {
         }
     }
 
-    private suspend fun startStreamInternal() {
+    private suspend fun startStreamInternal(autoReconnectAttempt: Boolean = false) {
         Logger.i("AudioStreamViewModel", "Starting stream")
         val mode = _uiState.value.mode
         val ip = _uiState.value.ipAddress.trim()
@@ -248,7 +265,7 @@ class AudioStreamViewModel : ViewModel() {
                 it.copy(
                     streamState = StreamState.Error,
                     errorMessage = getString(R.string.errorIpAddressEmpty),
-                    showErrorDialog = true
+                    showErrorDialog = !autoReconnectAttempt
                 )
             }
             return
@@ -290,7 +307,7 @@ class AudioStreamViewModel : ViewModel() {
                 it.copy(
                     streamState = StreamState.Error,
                     errorMessage = errorDetails.localizedMessage,
-                    showErrorDialog = true,
+                    showErrorDialog = !autoReconnectAttempt,
                     errorDetails = errorDetails
                 )
             }
@@ -300,6 +317,8 @@ class AudioStreamViewModel : ViewModel() {
 
     fun stopStream() {
         Logger.i("AudioStreamViewModel", "Stopping stream")
+        // An explicit stop must win over any pending retry.
+        cancelAutoReconnect()
         if (isStopStreamRequestPending) {
             Logger.d("AudioStreamViewModel", "Stop stream request ignored: stop already pending")
             return
@@ -461,6 +480,130 @@ class AudioStreamViewModel : ViewModel() {
     fun retryAfterError() {
         dismissErrorDialog()
         startStream()
+    }
+
+    // ---- Startup auto connect / auto reconnect -------------------------------
+    // Both options read SharedPreferences on demand so toggling them in Settings
+    // takes effect without recreating the ViewModel.
+
+    /** Called by the Activity once RECORD_AUDIO is granted at launch. */
+    fun onStartupPermissionsGranted() {
+        if (startupAutoConnectConsumed) return
+        startupAutoConnectConsumed = true
+        if (settings.getBoolean("auto_start", false)) {
+            Logger.i("AudioStreamViewModel", "Auto start is on: connecting at launch")
+            startStream()
+        }
+    }
+
+    /** Cancel a pending retry immediately when the option is switched off. */
+    fun onAutoReconnectChanged() {
+        if (!autoReconnectEnabled()) {
+            cancelAutoReconnect()
+        } else if (_uiState.value.streamState == StreamState.Error) {
+            // Switched on while already disconnected: start retrying right away.
+            scheduleAutoReconnect()
+        }
+    }
+
+    private fun autoReconnectEnabled(): Boolean =
+        settings.getBoolean("auto_reconnect", false)
+
+    private fun isStreamActive(): Boolean {
+        // The engine is authoritative: the uiState mirror is collected
+        // asynchronously and can still read Connecting right after a success.
+        val state = _audioEngine.currentStreamState()
+        return state == StreamState.Streaming || state == StreamState.Connecting
+    }
+
+    private fun cancelAutoReconnect() {
+        reconnectGeneration++
+        reconnectJob?.cancel()
+        reconnectJob = null
+    }
+
+    /**
+     * A disconnect (or a failed attempt) arrives as [StreamState.Error]. Retry
+     * `reconnect_retry_count` times every `reconnect_interval_seconds`; when
+     * `reconnect_periodic_minutes` is not Off, repeat the same burst after that
+     * many minutes until the user stops or the connection comes back.
+     */
+    private fun scheduleAutoReconnect() {
+        if (!autoReconnectEnabled()) return
+        if (reconnectJob?.isActive == true) return
+        val generation = ++reconnectGeneration
+        reconnectJob = auxiliaryScope.launch {
+            runAutoReconnectLoop(generation)
+        }
+    }
+
+    private suspend fun runAutoReconnectLoop(generation: Long) {
+        val retries = settings.getInt("reconnect_retry_count", 5).coerceIn(1, 20)
+        val intervalMs = settings.getInt("reconnect_interval_seconds", 5).coerceIn(1, 120) * 1000L
+        val periodicMinutes = settings.getInt("reconnect_periodic_minutes", 5).coerceIn(0, 60)
+        val periodicText =
+            if (periodicMinutes > 0) "then every $periodicMinutes min" else "no periodic retry"
+        Logger.i(
+            "AudioStreamViewModel",
+            "Auto reconnect armed: $retries attempt(s), ${intervalMs / 1000}s apart, $periodicText"
+        )
+
+        var round = 0
+        while (reconnectGeneration == generation && autoReconnectEnabled()) {
+            round++
+            if (round > 1) {
+                if (periodicMinutes <= 0) break
+                delay(periodicMinutes * 60_000L)
+                if (reconnectGeneration != generation || !autoReconnectEnabled()) break
+            }
+
+            var attempt = 0
+            var connected = false
+            while (attempt < retries && reconnectGeneration == generation && autoReconnectEnabled()) {
+                if (isStreamActive()) {
+                    connected = true
+                    break
+                }
+                // The saved target can never connect; stop instead of looping on it.
+                if (_uiState.value.ipAddress.isBlank()) break
+
+                delay(intervalMs)
+                if (reconnectGeneration != generation) break
+                if (isStreamActive()) {
+                    connected = true
+                    break
+                }
+
+                attempt++
+                Logger.i("AudioStreamViewModel", "Auto reconnect attempt $attempt/$retries (round $round)")
+                try {
+                    startStreamInternal(autoReconnectAttempt = true)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w("AudioStreamViewModel", "Auto reconnect attempt $attempt failed: ${e.message}")
+                }
+                if (_audioEngine.currentStreamState() == StreamState.Streaming) {
+                    connected = true
+                    break
+                }
+            }
+
+            if (connected) {
+                Logger.i("AudioStreamViewModel", "Auto reconnect succeeded")
+                break
+            }
+            if (_uiState.value.ipAddress.isBlank()) break
+        }
+
+        if (reconnectGeneration == generation) {
+            reconnectJob = null
+            // Retries are silent; after giving up (or when the periodic retry is
+            // Off) surface the last error so the user can act on it.
+            if (!isStreamActive() && _uiState.value.streamState == StreamState.Error) {
+                _uiState.update { it.copy(showErrorDialog = it.errorMessage != null) }
+            }
+        }
     }
 
     fun close(): Job = synchronized(closeLock) {

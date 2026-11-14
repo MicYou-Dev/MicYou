@@ -232,7 +232,6 @@
       "desc": "点以配音频之效",
       "descPopup": "拖以重排音频之效",
       "reset": "复为默认",
-      "aecPinned": "回音消除恒居链首",
       "AEC": "回音消除",
       "NoiseReduction": "降噪",
       "Dereverb": "去混响",

@@ -31,8 +31,10 @@ use crate::AecFailure;
 /// Host-provided DSP stage invoked at plugin chain nodes. The first argument
 /// is the chain node name: either the legacy synthetic [`PLUGIN_CHAIN_NODE`]
 /// (runs every registered plugin, in registry order) or a per-plugin node
-/// ([`PLUGIN_NODE_PREFIX`] + plugin id, runs just that plugin).
-pub type ExternalDspHook = Box<dyn FnMut(&str, &mut Vec<f32>, usize, f64) + Send>;
+/// ([`PLUGIN_NODE_PREFIX`] + plugin id, runs just that plugin). The second
+/// argument is the 0-based occurrence of that node among entries with the same
+/// name (always 0 unless a plugin opted into `dsp.allowMultipleNodes`).
+pub type ExternalDspHook = Box<dyn FnMut(&str, usize, &mut Vec<f32>, usize, f64) + Send>;
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1157,7 +1159,7 @@ impl DspProcessor {
             .clone();
         self.equalizer.update_filters(&settings.equalizer);
 
-        for effect in &settings.processing_chain {
+        for (chain_position, effect) in settings.processing_chain.iter().enumerate() {
             match effect.as_str() {
                 "AEC" =>
                 {
@@ -1212,14 +1214,20 @@ impl DspProcessor {
                     // Legacy synthetic plugin stage (may be absent): runs
                     // every registered plugin at this chain position.
                     if let Some(hook) = &mut self.external_hook {
-                        hook(PLUGIN_CHAIN_NODE, &mut to_process, channels.max(1), queued_ms);
+                        hook(PLUGIN_CHAIN_NODE, 0, &mut to_process, channels.max(1), queued_ms);
                     }
                 }
                 node if node.starts_with(PLUGIN_NODE_PREFIX) => {
                     // Per-plugin stage (issue #347): runs just the plugin
                     // named by this node, at its own position in the chain.
+                    // A plugin that opted into multiple nodes gets one copy of
+                    // the node per occurrence; tell it which one this is.
+                    let occurrence = settings.processing_chain[..chain_position]
+                        .iter()
+                        .filter(|previous| previous.as_str() == node)
+                        .count();
                     if let Some(hook) = &mut self.external_hook {
-                        hook(node, &mut to_process, channels.max(1), queued_ms);
+                        hook(node, occurrence, &mut to_process, channels.max(1), queued_ms);
                     }
                 }
                 _ => {}
@@ -1796,8 +1804,9 @@ mod tests {
         let calls = std::sync::Arc::new(std::sync::Mutex::new(0usize));
         let calls_clone = calls.clone();
         processor.set_external_hook(Some(Box::new(
-            move |node: &str, data: &mut Vec<f32>, channels: usize, _queued_ms: f64| {
+            move |node: &str, index: usize, data: &mut Vec<f32>, channels: usize, _queued_ms: f64| {
                 assert_eq!(node, PLUGIN_CHAIN_NODE);
+                assert_eq!(index, 0);
                 assert_eq!(channels, 1);
                 for sample in data.iter_mut() {
                     *sample += 0.5; // visible marker: plugin output
@@ -1827,7 +1836,7 @@ mod tests {
         let calls = std::sync::Arc::new(std::sync::Mutex::new(0usize));
         let calls_clone = calls.clone();
         processor.set_external_hook(Some(Box::new(
-            move |_node: &str, _data: &mut Vec<f32>, _ch: usize, _q: f64| {
+            move |_node: &str, _index: usize, _data: &mut Vec<f32>, _ch: usize, _q: f64| {
                 *calls_clone.lock().unwrap() += 1;
             },
         )));
@@ -1856,7 +1865,7 @@ mod tests {
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let seen_clone = seen.clone();
         processor.set_external_hook(Some(Box::new(
-            move |node: &str, _data: &mut Vec<f32>, _channels: usize, _queued_ms: f64| {
+            move |node: &str, _index: usize, _data: &mut Vec<f32>, _channels: usize, _queued_ms: f64| {
                 seen_clone.lock().unwrap().push(node.to_string());
             },
         )));

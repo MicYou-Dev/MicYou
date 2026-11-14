@@ -19,7 +19,7 @@
 use super::{lock_err, PluginHost};
 use crate::events::DownloadProgress;
 use micyou_plugin::bus::{PluginMessage, PluginSyncTransport};
-use micyou_plugin::manifest::{ConfigSchema, PluginDependency, UiDescriptor};
+use micyou_plugin::manifest::{ConfigSchema, DspDescriptor, PluginDependency, UiDescriptor};
 use micyou_plugin::PluginManifest;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -50,6 +50,11 @@ pub struct PluginView {
     pub capabilities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiDescriptor>,
+    /// DSP descriptor (`insertAfter`, `realtimeSafe`, `allowMultipleNodes`),
+    /// so the frontend chain editor can keep duplicate nodes for plugins that
+    /// opted into multiple instances.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dsp: Option<DspDescriptor>,
     pub enabled: bool,
     pub loaded: bool,
     pub dsp_node: bool,
@@ -103,7 +108,7 @@ impl From<PluginManifest> for PluginPreview {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginUpdate {
     pub id: String,
@@ -375,6 +380,7 @@ impl PluginHost {
                         platforms: m.platforms,
                         capabilities: m.capabilities,
                         ui: m.ui,
+                        dsp: m.dsp,
                     }
                 })
                 .collect()
@@ -530,7 +536,7 @@ impl PluginHost {
             .map_err(|e| lock_err(e).to_string())?
             .entries();
         let client = http_client(MANIFEST_FETCH_TIMEOUT)?;
-        let updates = entries
+        let updates: Vec<PluginUpdate> = entries
             .into_iter()
             .filter_map(|entry| {
                 let manifest = entry.manifest;
@@ -552,7 +558,24 @@ impl PluginHost {
                 })
             })
             .collect();
+        self.store_updates(&updates);
         Ok(updates)
+    }
+
+    /// Updates found by the last check, or `None` when no check has run yet.
+    /// The GUI starts one in the background so it can show them instantly.
+    pub fn cached_updates(&self) -> Option<Vec<PluginUpdate>> {
+        self.update_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn store_updates(&self, updates: &[PluginUpdate]) {
+        *self
+            .update_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(updates.to_vec());
     }
 
     /// Replace an installed plugin with the version its `updateUrl` points

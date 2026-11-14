@@ -20,7 +20,7 @@ flowchart LR
     DSP --> W
   end
 
-  DSP -->|"Plugins 链节点"| CHAIN[DspProcessor 处理链]
+  DSP -->|"Plugin:<id> 链节点"| CHAIN[DspProcessor 处理链]
   CHAIN --> OUT[cpal 输出 / 虚拟麦克风]
 
   BUS <-->|PluginMessage<br/>protobuf| TCP[TCP 控制通道]
@@ -47,9 +47,9 @@ flowchart LR
 ## 与 DSP 音频链路的关系
 
 - 服务端音频管线运行在专用音频线程（`crates/micyou-core/src/server/audio_pipeline.rs`），PCM 解码后经由 `micyou_audio::DspProcessor::process` 进行链式处理
-- 处理链由 `settings.json` 的 `processing_chain` 驱动（默认包含 AEC、降噪、去混响、EQ、放大、AGC、VAD）
-- 插件系统通过 `DspProcessor::set_external_hook` 接入音频链，由合成节点 **`Plugins`** 负责调度已启用的 DSP 插件
-- 若存在已启用的 DSP 插件，默认在 AEC 节点之后执行（用户可在 GUI 设置中自由调整顺序）
+- 处理链由 `settings.json` 的 `processing_chain` 驱动（默认顺序为 AEC、降噪、去混响、EQ、放大、AGC、VAD；AEC 只是默认排在最前的普通节点，可被拖到任意位置）
+- 插件系统通过 `DspProcessor::set_external_hook` 接入音频链，每个启用中的 DSP 插件在链中拥有独立的 **`Plugin:<id>`** 节点；旧版合成节点 `Plugins` 会在原位置展开为逐插件节点
+- 声明 `dsp.allowMultipleNodes` 的插件可以用多个 `Plugin:<id>` 节点；宿主通过 `AudioFrameCtx::node_index` / 可选的 `micyou_plugin_process_node` 告诉插件当前是第几个节点
 - 插件内部节点执行顺序由 `PluginDspRegistry` 管理（支持 `first` 标记优先，其余按插件 ID 确定性排序）
 - 单个插件处理异常时仅记录日志并自动旁路（Bypass），不阻断主音频流水线
 

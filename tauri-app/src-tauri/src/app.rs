@@ -62,6 +62,23 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     state.plugins.load_saved_plugins();
     app.manage(state);
 
+    // Checking plugin updates hits the network, so it runs once in the
+    // background instead of delaying startup. The result is cached by
+    // `PluginHost` and the plugin page reads it without another round-trip.
+    let plugin_host = app.state::<ServerState>().plugins.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        match plugin_host.check_updates() {
+            Ok(updates) if updates.is_empty() => {
+                log::info!("[plugins] startup update check: everything up to date");
+            }
+            Ok(updates) => {
+                log::info!("[plugins] startup update check: {} update(s) available", updates.len());
+            }
+            Err(e) => log::warn!("[plugins] startup update check failed: {e}"),
+        }
+    });
+
     match mode_lock::acquire(RunMode::Gui) {
         Ok(()) => log::info!(target: "mode", "GUI mode lock acquired"),
         Err(e) => log::warn!(target: "mode", "GUI mode lock not acquired: {e}"),
@@ -202,6 +219,7 @@ pub fn run() {
             commands::plugins::install_plugin_from_url,
             commands::plugins::cancel_plugin_download,
             commands::plugins::check_plugin_updates,
+            commands::plugins::get_cached_plugin_updates,
             commands::plugins::get_plugin_panel_icons,
             commands::plugins::get_app_locale,
             commands::plugins::update_plugin,

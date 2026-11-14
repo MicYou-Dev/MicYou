@@ -53,6 +53,8 @@ const track = useListeners();
 
 onMounted(async () => {
   p.refresh();
+  // 启动时的后台检查已经把结果缓存好了；没有缓存时补查一次。
+  void p.loadUpdates();
   // 拖拽插件文件夹 / .zip 上传（对应文案「把插件文件夹或 .zip 放进来」）
   try {
     await track(appWindow.onFileDrop((event) => {
@@ -139,20 +141,17 @@ async function confirmUninstall() {
   if (plugin) await p.uninstall(plugin);
 }
 
-const checking = ref(false);
+const checking = p.checkingUpdates;
 const marketOpen = ref(false);
-const updates = ref<{ id: string; currentVersion: string; latestVersion: string }[]>([]);
 
 async function checkUpdates() {
-  checking.value = true;
-  updates.value = await p.checkUpdates();
-  checking.value = false;
+  await p.checkUpdates();
 }
 
 async function applyUpdate(id: string) {
   const ok = await p.updatePlugin(id);
   if (ok) {
-    updates.value = updates.value.filter((u) => u.id !== id);
+    p.updates.value = p.updates.value.filter((u) => u.id !== id);
   }
 }
 </script>
@@ -177,6 +176,15 @@ async function applyUpdate(id: string) {
           {{ $t('plugins.market') }}
         </button>
         <button
+          @click="checkUpdates()"
+          :disabled="checking"
+          class="inline-flex items-center gap-1.5 px-3 h-9 rounded-full bg-surface-variant/40 hover:bg-surface-variant text-on-surface-variant text-xs font-medium transition-colors disabled:opacity-50"
+          :title="$t('plugins.checkUpdates')"
+        >
+          <RefreshCw class="w-4 h-4" :class="checking ? 'animate-spin' : ''" />
+          {{ $t('plugins.checkUpdates') }}
+        </button>
+        <button
           @click="p.refresh"
           class="w-9 h-9 rounded-full bg-surface-variant/40 hover:bg-surface-variant flex items-center justify-center transition-all duration-150 active:scale-90"
           :title="$t('plugins.refresh')"
@@ -192,6 +200,22 @@ async function applyUpdate(id: string) {
     <p v-if="p.error.value" class="px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
       {{ p.error.value }}
     </p>
+    <!-- Update banner: filled by the background startup check or a manual one -->
+    <div
+      v-if="p.updates.value.length"
+      class="rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-xs text-sky-300 space-y-2"
+    >
+      <div v-for="u in p.updates.value" :key="u.id" class="flex items-center justify-between gap-3">
+        <span> {{ u.id }}: {{ u.currentVersion }} → {{ u.latestVersion }} </span>
+        <button
+          @click="applyUpdate(u.id)"
+          :disabled="p.busyId.value === u.id + ':update'"
+          class="px-3 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-medium disabled:opacity-50"
+        >
+          {{ p.busyId.value === u.id + ':update' ? $t('plugins.updating') : $t('plugins.updateNow') }}
+        </button>
+      </div>
+    </div>
     <div
       v-if="p.loading.value && p.plugins.value.length === 0"
       class="py-16 text-center text-on-surface-variant text-sm"
@@ -216,32 +240,6 @@ async function applyUpdate(id: string) {
           <FolderOpen class="w-4 h-4" />
           {{ $t('plugins.openDir') }}
         </button>
-        <button
-          @click="checkUpdates()"
-          :disabled="checking"
-          class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface-variant/40 hover:bg-surface-variant text-on-surface-variant text-sm font-medium"
-        >
-          <RefreshCw :class="checking ? 'animate-spin' : ''" class="w-4 h-4" />
-          {{ $t('plugins.checkUpdates') }}
-        </button>
-      </div>
-      <!-- Update banner -->
-      <div
-        v-if="updates.length"
-        class="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-xs text-sky-300 space-y-2"
-      >
-        <div v-for="u in updates" :key="u.id" class="flex items-center justify-between gap-3">
-          <span> {{ u.id }}: {{ u.currentVersion }} → {{ u.latestVersion }} </span>
-          <button
-            @click="applyUpdate(u.id)"
-            :disabled="p.busyId.value === u.id + ':update'"
-            class="px-3 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-medium disabled:opacity-50"
-          >
-            {{
-              p.busyId.value === u.id + ':update' ? $t('plugins.updating') : $t('plugins.updateNow')
-            }}
-          </button>
-        </div>
       </div>
     </div>
     <template v-else>

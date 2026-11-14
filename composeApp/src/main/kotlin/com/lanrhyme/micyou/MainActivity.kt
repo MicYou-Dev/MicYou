@@ -251,6 +251,13 @@ class MainActivity : ComponentActivity() {
             val currentPermissions by currentPermissionsState
             val isPermissionDialogDismissed by permissionDialogDismissed
 
+            // "Auto Start" (connect on launch) needs RECORD_AUDIO; kick it off as
+            // soon as the permission state turns green, including after a grant.
+            val hasRequiredPermissions = hasAllRequiredPermissions(currentPermissions)
+            LaunchedEffect(hasRequiredPermissions) {
+                if (hasRequiredPermissions) appViewModel.onStartupPermissionsGranted()
+            }
+
             App(
                 viewModel = appViewModel,
                 activity = this@MainActivity,

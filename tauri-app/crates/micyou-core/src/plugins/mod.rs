@@ -66,6 +66,10 @@ pub struct PluginHost {
     hotkeys: HotkeyService,
     host: SharedHost,
     panel_icons: PanelIcons,
+    /// Result of the last update check: `None` until one has run. The GUI
+    /// fills this from a background startup check so opening the plugin page
+    /// does not have to wait for the network.
+    update_cache: Mutex<Option<Vec<install::PluginUpdate>>>,
     /// Set once by [`crate::server::ServerState::new`].
     controls: OnceLock<Controls>,
     server: ServerHandles,
@@ -120,6 +124,7 @@ impl PluginHost {
             sound: sound_player::SoundPlayer::new(server.audio_output.clone()),
             host,
             panel_icons: Mutex::new(HashMap::new()),
+            update_cache: Mutex::new(None),
             controls: OnceLock::new(),
             server,
         })
@@ -146,6 +151,11 @@ impl PluginHost {
                 return;
             }
         };
+        for (path, reason) in report.skipped {
+            // Version / platform / malformed-manifest rejections land here;
+            // keep the reason in the log so a user can act on it.
+            log::warn!("[plugins] skipped {}: {reason}", path.display());
+        }
         for entry in report.discovered {
             if entry.state.is_enabled() {
                 if let Err(e) = self.enable_plugin(&entry.manifest.id) {
@@ -240,6 +250,7 @@ impl PluginHost {
                 id.to_string(),
                 dsp.first,
                 dsp.insert_after.clone(),
+                dsp.allow_multiple_nodes,
                 handle,
             ))?;
         }
@@ -294,17 +305,19 @@ impl PluginHost {
         dsp_settings: &RwLock<micyou_audio::dsp::AudioDspSettings>,
     ) {
         let ids = self.dsp_registry.plugin_ids();
+        let multi = self.dsp_registry.multi_node_ids();
         let mut settings = dsp_settings
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        reconcile_plugin_chain(&mut settings.processing_chain, &ids);
+        reconcile_plugin_chain(&mut settings.processing_chain, &ids, &multi);
     }
 
     /// Reconcile the chain inside a settings value about to be applied, so a
     /// full-settings write can neither drop active nor keep stale nodes.
     pub fn reconcile_settings_chain(&self, settings: &mut micyou_audio::dsp::AudioDspSettings) {
         let ids = self.dsp_registry.plugin_ids();
-        reconcile_plugin_chain(&mut settings.processing_chain, &ids);
+        let multi = self.dsp_registry.multi_node_ids();
+        reconcile_plugin_chain(&mut settings.processing_chain, &ids, &multi);
     }
 
     pub fn dsp_hook(&self) -> micyou_audio::dsp::ExternalDspHook {

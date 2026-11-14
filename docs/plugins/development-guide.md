@@ -38,7 +38,7 @@
 | `version` | string | 是 | SemVer 版本号（如 `1.0.0`） |
 | `runtime` | string | 是 | 运行时类型：`wasm`（推荐）或 `native` |
 | `entry` | string | 是 | 入口文件。Native 插件建议省略 `lib` 前缀与平台后缀（如填 `my_plugin`），宿主将根据 OS 自动补全 |
-| `apiVersion` | number | 是 | 宿主 API 版本，当前为 `1` |
+| `apiVersion` | number | 否 | 插件构建时使用的 Host API 版本，支持 `1` 或 `2`；省略时默认 `2`（当前宿主为 `2`） |
 | `author` | string | 否 | 作者昵称或联系邮箱 |
 | `description` | string | 否 | 插件功能简述 |
 | `license` | string | 否 | SPDX 许可证标识（如 `MIT`, `Apache-2.0`） |
@@ -47,11 +47,11 @@
 | `keywords` | string[] | 否 | 检索关键词列表 |
 | `platforms` | string[] | 否 | 支持的操作系统（`linux`, `windows`, `macos`, `android`），空表示全部 |
 | `arches` | string[] | 否 | Native 插件支持的 CPU 架构（`x86_64`, `aarch64` 等），空表示全部 |
-| `minHostVersion` | string | 否 | 所需最低宿主 API 版本（SemVer 格式） |
+| `minHostVersion` | string | 否 | 所需最低 MicYou 宿主应用版本（SemVer，如 `2.1.0`）；宿主版本更旧时拒绝加载 |
 | `capabilities` | string[] | 否 | 申请的宿主能力清单，参见 [API 参考](api-reference.md#权限清单) |
 | `kind` | string | 否 | 插件类型：`dsp` / `utility` / `ui` / `bridge`，默认为 `utility` |
 | `ui` | object | 否 | UI 面板配置：`{ route, label, panels }` |
-| `dsp` | object | 否 | DSP 节点声明：`{ insertAfter, first, frameSize, realtimeSafe }` |
+| `dsp` | object | 否 | DSP 节点声明：`{ insertAfter, first, frameSize, realtimeSafe, allowMultipleNodes }`；`allowMultipleNodes: true` 允许同一 `Plugin:<id>` 在链中重复出现（配合 `micyou_plugin_process_node` 区分节点序号） |
 | `config` | object | 否 | 首次启用时初始化的默认配置对象 |
 | `configSchema` | object | 否 | 声明式配置项描述，宿主据此自动生成原生风格设置表单 |
 | `dependencies` | object[] | 否 | 前置插件依赖声明：`[{ id, version, optional }]` |
@@ -91,7 +91,8 @@ Manifest 示例（`plugin.json`）：
 
 - id 必须合法反向域名格式
 - version 必须合法 SemVer
-- `apiVersion` 必须等于宿主 Host API 版本（当前 1）
+- `apiVersion` 必须落在宿主支持区间（当前 `1..=2`，省略时按 `2` 处理）
+- `minHostVersion` 必须是合法 SemVer；宿主版本（`gradle.properties` 的 `project.version`）低于它时拒绝加载
 - capabilities 必须是已知能力（未知能力拒绝）
 - WASM DSP 插件不得声明 `realtimeSafe: true`
 - `ui` 类型插件必须声明 `ui` 描述
@@ -184,7 +185,7 @@ Native 插件是平台 cdylib，通过版本化 C ABI 与宿主交互，ABI 定�
 ### 必需符号
 
 ```c
-// 静态插件身份（abiVersion 必须等于 1，apiVersion 必须等于 1，id 必须与 manifest 一致）
+// 静态插件身份（abiVersion 必须等于 1，apiVersion 为 1 或 2，id 必须与 manifest 一致）
 const mpl_plugin_info_t *micyou_plugin_info(void);
 
 // 初始化：保存 host 回调表（生命周期内有效）
@@ -199,6 +200,10 @@ void micyou_plugin_deinit(void);
 ```c
 // 实时 DSP：原地处理 samples 个交错 f32，bypass=1 表示本帧旁路
 mpl_result_t micyou_plugin_process(float *data, uint32_t samples, uint32_t channels, double queued_ms, uint32_t *bypass);
+
+// 多节点 DSP（可选）：manifest 声明 dsp.allowMultipleNodes 后，宿主优先调用它并传入
+// node_index（同名 Plugin:<id> 节点在链中的 0-based 序号）
+mpl_result_t micyou_plugin_process_node(float *data, uint32_t samples, uint32_t channels, double queued_ms, uint32_t node_index, uint32_t *bypass);
 
 // 本地事件通知（type 为事件类型，json 为负载）
 mpl_result_t micyou_plugin_handle_event(const char *type, const char *json);
@@ -506,7 +511,8 @@ host->send_message(host->ctx,
 
 - 帧 RMS 噪声门：低于阈值按 depth 衰减，attack/release 包络平滑避免咔哒声
 - 全程无分配、无 host 调用（配置经原子变量无锁读取），满足实时安全
-- 进 DSP 链的位置由 `dsp.insertAfter` 决定（默认 AEC 之后）
+- 进 DSP 链的位置由 `dsp.insertAfter` 决定；缺失节点默认补在最后一个插件节点之后，没有插件节点时补在 `AEC` 之后，否则链尾。`AEC` 只是普通内置节点，用户可以在链编辑器里把它拖到任意位置
+- 每个启用中的 DSP 插件在链中拥有独立的 `Plugin:<id>` 节点；声明 `dsp.allowMultipleNodes: true` 后同一个 `Plugin:<id>` 可以重复出现，每次出现都会通过 `AudioFrameCtx::node_index` / `micyou_plugin_process_node` 得到自己的 0-based 序号
 
 ## 编写插件专属设置页（ui.panels）
 

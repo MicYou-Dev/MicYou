@@ -38,6 +38,9 @@ const syncStatus = ref<PluginSyncStatus>({ deviceConnected: false, transportRead
 const loading = ref(false);
 const busyId = ref<string | null>(null);
 const error = ref<string | null>(null);
+/** 可用更新：由启动时的后台检查填充，也可手动刷新 */
+const updates = ref<PluginUpdate[]>([]);
+const checkingUpdates = ref(false);
 
 export function usePlugins() {
   async function refresh() {
@@ -145,11 +148,35 @@ export function usePlugins() {
   }
 
   async function checkUpdates(): Promise<PluginUpdate[]> {
+    checkingUpdates.value = true;
     try {
-      return await command('check_plugin_updates');
+      updates.value = await command('check_plugin_updates');
     } catch {
-      return [];
+      // Keep whatever the previous check found; the manual error surfaces on demand.
+    } finally {
+      checkingUpdates.value = false;
     }
+    return updates.value;
+  }
+
+  /**
+   * 读取启动时后台检查的结果（不发起网络请求）。返回 false 表示后台检查
+   * 还没跑完，调用方可以补一次手动检查。
+   */
+  async function loadCachedUpdates(): Promise<boolean> {
+    try {
+      const cached = await command('get_cached_plugin_updates');
+      if (!cached) return false;
+      updates.value = cached;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 插件页打开时调用：优先用启动检查的缓存，没有则临时查一次。 */
+  async function loadUpdates(): Promise<void> {
+    if (!(await loadCachedUpdates())) await checkUpdates();
   }
 
   async function updatePlugin(id: string): Promise<boolean> {
@@ -207,6 +234,8 @@ export function usePlugins() {
     loading,
     busyId,
     error,
+    updates,
+    checkingUpdates,
     refresh,
     toggle,
     uninstall,
@@ -219,6 +248,8 @@ export function usePlugins() {
     importPlugin,
     importFromPath,
     checkUpdates,
+    loadCachedUpdates,
+    loadUpdates,
     updatePlugin,
   };
 }
