@@ -104,7 +104,10 @@ data class ConnectMessage(
     val sessionId: Long = 0,
     // 客户端平台，桌面端据此显示设备类型；默认值不会被编码，发送时须显式传入 CLIENT_PLATFORM
     @ProtoNumber(2)
-    val platform: String = ""
+    val platform: String = "",
+    // 传输协议：both (TCP+UDP) 或 tcp (纯TCP)；默认值不编码
+    @ProtoNumber(3)
+    val transport: String = ""
 )
 
 @OptIn(ExperimentalSerializationApi::class)

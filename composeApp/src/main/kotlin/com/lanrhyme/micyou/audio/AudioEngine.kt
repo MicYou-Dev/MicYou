@@ -693,9 +693,10 @@ class AudioEngine constructor() {
                                 throw IllegalStateException(msg)
                             }
                             Logger.i("AudioEngine", "Handshake successful")
+                            val transportStr = if (transportProtocol == TransportProtocol.Tcp) "tcp" else "both"
                             val connectBytes = proto.encodeToByteArray(
                                 MessageWrapper.serializer(),
-                                MessageWrapper(connect = ConnectMessage(sessionId, CLIENT_PLATFORM))
+                                MessageWrapper(connect = ConnectMessage(sessionId, CLIENT_PLATFORM, transportStr))
                             )
                             out.writeInt(PACKET_MAGIC)
                             out.writeInt(connectBytes.size)

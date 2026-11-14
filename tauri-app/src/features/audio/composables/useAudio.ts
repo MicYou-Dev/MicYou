@@ -103,6 +103,7 @@ export function useAudio() {
       })),
       track(onEvent('audio-metrics', (payload) => {
         audioMetrics.value = payload;
+        if (payload.bitrate > 0) hideUdpWarning();
       })),
       // Mute and monitoring changes made from other surfaces (tray, CLI, phone)
       track(onEvent('mute-state-changed', (payload) => {

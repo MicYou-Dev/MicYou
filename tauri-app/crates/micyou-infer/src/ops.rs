@@ -93,6 +93,7 @@ fn broadcast_strides(ish: &[u32], osh: &[u32]) -> [usize; MAX_NDIM] {
 /// * `x > 88.0`  → +inf
 /// * `x < -87.0` → 0.0
 #[inline]
+#[allow(clippy::approx_constant)]
 pub fn fast_exp(x: f32) -> f32 {
     const LN2_HI: f32 = 0.6931457519531250; // trailing zero bits → k*LN2_HI exact
     const LN2_LO: f32 = 1.4286068203094172e-6;

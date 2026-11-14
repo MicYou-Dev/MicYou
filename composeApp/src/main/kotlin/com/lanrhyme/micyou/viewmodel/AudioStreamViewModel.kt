@@ -350,10 +350,31 @@ class AudioStreamViewModel : ViewModel() {
         }
     }
 
+    private fun restartStreamIfRunning(reason: String) {
+        val wasRunning = _uiState.value.streamState == StreamState.Streaming || _uiState.value.streamState == StreamState.Connecting
+        if (wasRunning && !isStartStreamRequestPending) {
+            isStartStreamRequestPending = true
+            auxiliaryScope.launch {
+                try {
+                    _audioEngine.stopAndWait()
+                    startStreamInternal()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e("AudioStreamViewModel", "Failed to restart stream after $reason", e)
+                } finally {
+                    isStartStreamRequestPending = false
+                }
+            }
+        }
+    }
+
     fun setTransportProtocol(protocol: TransportProtocol) {
+        if (_uiState.value.transportProtocol == protocol) return
         Logger.i("AudioStreamViewModel", "Setting transport protocol to $protocol")
         _uiState.update { it.copy(transportProtocol = protocol) }
         settings.putString("transport_protocol", protocol.name)
+        restartStreamIfRunning("transport protocol change")
     }
 
     fun setIp(ip: String, restartStream: Boolean = false) {
@@ -370,22 +391,8 @@ class AudioStreamViewModel : ViewModel() {
         }
 
         // 如果要求重启流（IP 切换时），先停止再启动
-        // Holds the start flag so a concurrent startStream() cannot race the restart;
-        // stays on the main dispatcher like every other uiState writer.
-        if (restartStream && wasRunning && ip.isNotBlank() && !isStartStreamRequestPending) {
-            isStartStreamRequestPending = true
-            auxiliaryScope.launch {
-                try {
-                    _audioEngine.stopAndWait()
-                    startStreamInternal()
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.e("AudioStreamViewModel", "Failed to restart stream after IP change", e)
-                } finally {
-                    isStartStreamRequestPending = false
-                }
-            }
+        if (restartStream && wasRunning && ip.isNotBlank()) {
+            restartStreamIfRunning("IP change")
         }
     }
 
@@ -409,18 +416,24 @@ class AudioStreamViewModel : ViewModel() {
     }
 
     fun setSampleRate(rate: SampleRate) {
+        if (_uiState.value.sampleRate == rate) return
         _uiState.update { it.copy(sampleRate = rate) }
         settings.putString("sample_rate", rate.name)
+        restartStreamIfRunning("sample rate change")
     }
 
     fun setChannelCount(count: ChannelCount) {
+        if (_uiState.value.channelCount == count) return
         _uiState.update { it.copy(channelCount = count) }
         settings.putString("channel_count", count.name)
+        restartStreamIfRunning("channel count change")
     }
 
     fun setAudioFormat(format: AudioFormat) {
+        if (_uiState.value.audioFormat == format) return
         _uiState.update { it.copy(audioFormat = format) }
         settings.putString("audio_format", format.name)
+        restartStreamIfRunning("audio format change")
     }
 
     fun setAndroidAudioSource(sourceName: String) {

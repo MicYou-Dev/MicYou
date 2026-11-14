@@ -34,6 +34,7 @@ pub struct NetworkStats {
     pub jitter_bits: AtomicU64,
     pub loss_rate_bits: AtomicU64,
     pub last_udp_packet_time_ms: AtomicU64,
+    pub last_audio_packet_time_ms: AtomicU64,
     pub tcp_connected_time_ms: AtomicU64,
     pub bitrate: AtomicU32,
     pub sample_rate: AtomicU32,
@@ -55,6 +56,7 @@ impl Default for NetworkStats {
             jitter_bits: AtomicU64::new(0f64.to_bits()),
             loss_rate_bits: AtomicU64::new(0f64.to_bits()),
             last_udp_packet_time_ms: AtomicU64::new(0),
+            last_audio_packet_time_ms: AtomicU64::new(0),
             tcp_connected_time_ms: AtomicU64::new(0),
             bitrate: AtomicU32::new(0),
             sample_rate: AtomicU32::new(0),
@@ -102,13 +104,23 @@ impl NetworkStats {
         self.last_udp_packet_time_ms.load(Ordering::Relaxed)
     }
 
+    pub fn mark_audio_received(&self, time_ms: u64) {
+        self.last_audio_packet_time_ms
+            .store(time_ms, Ordering::Relaxed);
+    }
+    pub fn get_last_audio_time(&self) -> u64 {
+        self.last_audio_packet_time_ms.load(Ordering::Relaxed)
+    }
+
     pub fn mark_tcp_connected(&self, time_ms: u64) {
         self.tcp_connected_time_ms.store(time_ms, Ordering::Relaxed);
         self.last_udp_packet_time_ms.store(0, Ordering::Relaxed);
+        self.last_audio_packet_time_ms.store(0, Ordering::Relaxed);
     }
     pub fn mark_tcp_disconnected(&self) {
         self.tcp_connected_time_ms.store(0, Ordering::Relaxed);
         self.last_udp_packet_time_ms.store(0, Ordering::Relaxed);
+        self.last_audio_packet_time_ms.store(0, Ordering::Relaxed);
         self.loss_rate_bits.store(0f64.to_bits(), Ordering::Relaxed);
         self.jitter_bits.store(0f64.to_bits(), Ordering::Relaxed);
         self.rtt_ms.store(0, Ordering::Relaxed);
@@ -321,19 +333,26 @@ mod tests {
     fn test_network_stats_connect_disconnect_lifecycle() {
         let stats = NetworkStats::default();
         stats.mark_udp_received(12345);
+        stats.mark_audio_received(12345);
         stats.set_loss_rate(5.5);
         stats.set_jitter(12.0);
 
         assert_eq!(stats.get_last_udp_time(), 12345);
+        assert_eq!(stats.get_last_audio_time(), 12345);
         assert_eq!(stats.get_loss_rate(), 5.5);
 
         stats.mark_tcp_connected(20000);
         assert_eq!(stats.get_tcp_connected_time(), 20000);
         assert_eq!(stats.get_last_udp_time(), 0);
+        assert_eq!(stats.get_last_audio_time(), 0);
+
+        stats.mark_audio_received(20050);
+        assert_eq!(stats.get_last_audio_time(), 20050);
 
         stats.mark_tcp_disconnected();
         assert_eq!(stats.get_tcp_connected_time(), 0);
         assert_eq!(stats.get_last_udp_time(), 0);
+        assert_eq!(stats.get_last_audio_time(), 0);
         assert_eq!(stats.get_loss_rate(), 0.0);
         assert_eq!(stats.get_jitter(), 0.0);
     }

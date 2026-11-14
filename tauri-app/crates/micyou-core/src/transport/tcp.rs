@@ -521,6 +521,10 @@ async fn handle_client(
         .map_or(ClientPlatform::Unknown, |connect| {
             ClientPlatform::from_wire(&connect.platform)
         });
+    let is_tcp_only = first_message
+        .connect
+        .as_ref()
+        .is_some_and(|connect| connect.transport.eq_ignore_ascii_case("tcp"));
 
     #[cfg(windows)]
     let raw: RawSocketHandle = std::os::windows::io::AsRawSocket::as_raw_socket(&socket);
@@ -696,14 +700,20 @@ async fn handle_client(
             if cfg!(target_os = "windows")
                 && mode == ConnectionMode::Wifi
                 && !warning_fired
+                && !is_tcp_only
                 && !stats_emit.is_muted()
             {
                 let tcp_time = stats_emit.get_tcp_connected_time();
                 let last_udp = stats_emit.get_last_udp_time();
-                // Any UDP packet this session proves the firewall lets the
-                // audio port through; only warn after 10 s of TCP without one.
+                let last_audio = stats_emit.get_last_audio_time();
+                // Any UDP or audio packet this session proves audio reaches the desktop;
+                // only warn after 10 s of TCP without ANY audio or UDP packets.
                 let now = crate::stats::unix_millis();
-                if tcp_time > 0 && last_udp == 0 && now.saturating_sub(tcp_time) > 10_000 {
+                if tcp_time > 0
+                    && last_udp == 0
+                    && last_audio == 0
+                    && now.saturating_sub(tcp_time) > 10_000
+                {
                     events_emit.udp_audio_warning();
                     warning_fired = true;
                 }
@@ -808,6 +818,7 @@ async fn handle_message(
         else {
             return;
         };
+        stats.mark_audio_received(crate::stats::unix_millis());
         meter.observe(stats, epoch, &audio, audio_payload_len(&audio));
         let permit = tokio::select! {
             biased;
@@ -817,13 +828,13 @@ async fn handle_message(
                 Err(_) => return,
             },
         };
-        run_if_active(active_connection, takeover_token, connection_id, || {
-            permit.send(AudioStreamEvent::Packet {
-                packet: audio,
-                epoch,
-            });
-        })
-        .await;
+        if takeover_token.is_cancelled() {
+            return;
+        }
+        permit.send(AudioStreamEvent::Packet {
+            packet: audio,
+            epoch,
+        });
     }
     if let Some(ping) = msg.ping {
         let pong_msg = MessageWrapper {
@@ -930,6 +941,7 @@ mod tests {
         let connect = |platform: &str| ConnectMessage {
             session_id: 7,
             platform: platform.to_string(),
+            transport: String::new(),
         };
 
         assert_eq!(decode(connect("ios")), ClientPlatform::Ios);
@@ -937,6 +949,13 @@ mod tests {
         // Legacy clients leave the field empty; unexpected values are not trusted.
         assert_eq!(decode(connect("")), ClientPlatform::Unknown);
         assert_eq!(decode(connect("iOS ")), ClientPlatform::Unknown);
+
+        let tcp_connect = ConnectMessage {
+            session_id: 8,
+            platform: "android".to_string(),
+            transport: "tcp".to_string(),
+        };
+        assert!(tcp_connect.transport.eq_ignore_ascii_case("tcp"));
     }
 
     #[test]

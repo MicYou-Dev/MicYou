@@ -45,6 +45,8 @@ message ConnectMessage {
     int64 sessionId = 1;
     // Client platform: "android" or "ios". Empty for clients that predate this field.
     string platform = 2;
+    // Client transport protocol: "both" (TCP control + UDP audio, default) or "tcp" (pure TCP audio). Empty for legacy.
+    string transport = 3;
 }
 
 message MuteMessage {

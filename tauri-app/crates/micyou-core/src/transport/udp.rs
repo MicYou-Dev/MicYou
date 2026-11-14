@@ -229,6 +229,7 @@ pub async fn start_udp_server(
                                 continue;
                             };
                             stats.mark_udp_received(crate::stats::unix_millis());
+                            stats.mark_audio_received(crate::stats::unix_millis());
                             meter.observe(&stats, epoch, &audio_packet_ordered, payload.len());
 
                             match tx.try_send(AudioStreamEvent::Packet {
