@@ -16,7 +16,7 @@ members = [
 opus-decoder = { git = "https://github.com/tfr0305/Rusopus.git", branch = "master" }
 
 [workspace.package]
-version = "2.1.1"
+version = "2.2.0"
 authors = ["LanRhyme"]
 edition = "2021"
 license = "GPL-3.0-or-later"

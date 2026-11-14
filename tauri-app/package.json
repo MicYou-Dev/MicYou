@@ -1,7 +1,7 @@
 {
   "name": "micyou",
   "private": true,
-  "version": "2.1.1",
+  "version": "2.2.0",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "packageManager": "bun@1.4.2",

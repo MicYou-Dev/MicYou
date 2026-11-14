@@ -3458,7 +3458,7 @@ dependencies = [
 
 [[package]]
 name = "micyou-app"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "gdkwayland-sys",
  "glib",
@@ -3486,7 +3486,7 @@ dependencies = [
 
 [[package]]
 name = "micyou-audio"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "core-foundation 0.10.1",
  "cpal",
@@ -3503,7 +3503,7 @@ dependencies = [
 
 [[package]]
 name = "micyou-cli"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "clap 4.6.7",
  "log",
@@ -3519,7 +3519,7 @@ dependencies = [
 
 [[package]]
 name = "micyou-core"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "arboard",
  "axum",
@@ -3557,11 +3557,11 @@ dependencies = [
 
 [[package]]
 name = "micyou-infer"
-version = "2.1.1"
+version = "2.2.0"
 
 [[package]]
 name = "micyou-plugin"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "libloading 0.9.0",
  "log",
@@ -3576,11 +3576,11 @@ dependencies = [
 
 [[package]]
 name = "micyou-plugin-fixture-native"
-version = "2.1.1"
+version = "2.2.0"
 
 [[package]]
 name = "micyou-protocol"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "prost",
  "prost-build",
@@ -3589,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "micyou-tui"
-version = "2.1.1"
+version = "2.2.0"
 dependencies = [
  "clap 4.6.7",
  "crossterm",
