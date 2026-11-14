@@ -18,6 +18,8 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+tauri-app/test-results/
+tauri-app/playwright-report/
 gradle.properties
 gradle/wrapper/gradle-wrapper.properties
 CLAUDE.md

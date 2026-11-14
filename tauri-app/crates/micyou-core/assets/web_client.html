@@ -775,6 +775,17 @@
                 stream: null,
                 connectionAttempt: 0,
 
+                init() {
+                    try {
+                        const savedLang = localStorage.getItem('micyou-web-language');
+                        if (savedLang === 'en' || savedLang === 'zh') {
+                            this.lang = savedLang;
+                        }
+                    } catch {
+                        // Storage can be unavailable in restricted browser contexts.
+                    }
+                },
+
                 get statusIconSvg() {
                     switch (this.streamState) {
                         case 'acquiring': return SVG_MIC;
@@ -843,7 +854,13 @@
                 },
 
                 setLang(l) {
+                    if (l !== 'en' && l !== 'zh') return;
                     this.lang = l;
+                    try {
+                        localStorage.setItem('micyou-web-language', l);
+                    } catch {
+                        // Keep language switching usable when storage is unavailable.
+                    }
                 },
 
                 toggleLangMenu() {

@@ -49,6 +49,41 @@ bun install          # only when dependencies need to be restored or updated
 bun run build        # vue-tsc type check + vite build
 ```
 
+### Web client UI (no Rust build)
+
+The phone's web UI lives in `tauri-app/crates/micyou-core/assets/web_client.html`.
+Preview that exact page and its bundled Alpine library without compiling Rust:
+
+```bash
+cd tauri-app
+node scripts/web-preview.mjs
+```
+
+Open `http://127.0.0.1:8787`. The preview binds only to loopback and serves only
+the HTML and Alpine assets. It supports UI and language checks, but provides no
+audio server or WebSocket endpoint. Browser storage is scoped to each origin,
+so preferences saved here do not affect the installed app or a different port.
+
+For automated checks (Node 24 and the pinned Bun version):
+
+```bash
+bun install --frozen-lockfile
+bun run test:web
+bunx playwright install chromium webkit
+bun run test:web:browser
+```
+
+The browser tests exercise Alpine initialization, language selection across
+reloads, and the help sheet in Chromium and mobile WebKit. They do not request
+microphone permission or test audio transport. CI runs these checks in the
+path-filtered **Web Client** workflow without building Android or the desktop.
+
+The production server embeds the HTML at Rust compile time. For an end-to-end
+phone/audio test after editing it, close the installed app and run
+`cargo run -p micyou-cli -- serve --mode web --port 8443` from `tauri-app`, or
+rebuild the desktop GUI. Opening the static preview does not modify an installed
+MicYou executable.
+
 ### Desktop GUI (Tauri)
 
 ```bash
