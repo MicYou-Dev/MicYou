@@ -6,6 +6,7 @@
 export interface ServerPrefs {
   port: number;
   webPort: number;
+  webAllowedOrigins: string[];
   mode: string;
   bindAddress: string;
   autoBind: boolean;
