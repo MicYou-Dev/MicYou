@@ -182,6 +182,26 @@ fn float32_to_pcm16(float32_bytes: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn connection_check_reports_origin_rejection() {
+        let missing = check_connection(HeaderMap::new()).await.into_response();
+        assert_eq!(missing.status(), StatusCode::FORBIDDEN);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-micyou-origin", "https://evil.example".parse().unwrap());
+        assert_eq!(
+            check_connection(headers).await.into_response().status(),
+            StatusCode::FORBIDDEN
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-micyou-origin", "https://127.0.0.1:8443".parse().unwrap());
+        assert_eq!(
+            check_connection(headers).await.into_response().status(),
+            StatusCode::OK
+        );
+    }
+
     #[test]
     fn test_generate_self_signed_cert_pem() {
         let cert = generate_self_signed_cert_pem(&certificate_ips());
@@ -378,6 +398,17 @@ fn is_valid_origin(origin: Option<&str>) -> bool {
         return false;
     };
     ip.is_loopback() || get_lan_ips().contains(&ip) || get_lan_ipv6s().contains(&ip)
+}
+
+// A normal HTTP request can expose diagnostics that a browser hides during a
+// failed WebSocket handshake. This does not authorize the later upgrade.
+async fn check_connection(headers: HeaderMap) -> impl IntoResponse {
+    let origin = headers.get("x-micyou-origin").and_then(|v| v.to_str().ok());
+    if origin.is_some() && is_valid_origin(origin) {
+        (StatusCode::OK, "Ready")
+    } else {
+        (StatusCode::FORBIDDEN, "Invalid origin")
+    }
 }
 
 async fn handle_websocket(
@@ -641,6 +672,7 @@ impl WebServer {
         let app = Router::new()
             .route("/", get(serve_html))
             .route("/alpine.min.js", get(serve_alpine_js))
+            .route("/connection-check", get(check_connection))
             .route("/ws", get(handle_websocket))
             .with_state(state);
         // Clone for the best-effort IPv6 listener started below; the IPv4

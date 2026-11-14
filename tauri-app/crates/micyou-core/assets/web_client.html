@@ -773,6 +773,7 @@
                 audioContext: null,
                 workletNode: null,
                 stream: null,
+                connectionAttempt: 0,
 
                 get statusIconSvg() {
                     switch (this.streamState) {
@@ -809,7 +810,7 @@
                 get SVG_ERROR() { return SVG_ERROR; },
 
                 get statusLabel() {
-                    if (this.streamState === 'error') return this.lang === 'zh' ? '麦克风访问失败，请检查权限' : 'Microphone access failed, check permissions';
+                    if (this.streamState === 'error') return this.lang === 'zh' ? '无法开始传输' : 'Could not start streaming';
                     const labels = {
                         idle: { zh: '点击开始连接', en: 'Tap to connect' },
                         acquiring: { zh: '获取麦克风权限...', en: 'Requesting Mic...' },
@@ -884,11 +885,36 @@
                 },
 
                 async startStreaming() {
-                    this.streamState = 'acquiring';
+                    const attempt = ++this.connectionAttempt;
+                    this.streamState = 'connecting';
                     this.errorMessage = '';
+                    let stage = 'server';
 
                     try {
-                        this.stream = await navigator.mediaDevices.getUserMedia({
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 8000);
+                        let response;
+                        try {
+                            response = await fetch('/connection-check', {
+                                headers: { 'X-MicYou-Origin': location.origin },
+                                cache: 'no-store',
+                                signal: controller.signal,
+                            });
+                        } finally {
+                            clearTimeout(timeout);
+                        }
+                        const originRejected = response.status === 403 && await response.text() === 'Invalid origin';
+                        if (attempt !== this.connectionAttempt) return;
+                        if (originRejected) {
+                            throw new Error('origin_rejected');
+                        }
+                        if (!response.ok) throw new Error('server_unavailable');
+                        stage = 'microphone';
+                        this.streamState = 'acquiring';
+                        if (!navigator.mediaDevices?.getUserMedia) {
+                            throw new Error('microphone_unavailable');
+                        }
+                        const stream = await navigator.mediaDevices.getUserMedia({
                             audio: {
                                 sampleRate: 48000,
                                 channelCount: 1,
@@ -898,14 +924,22 @@
                             }
                         });
 
+                        if (attempt !== this.connectionAttempt) {
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
+                        this.stream = stream;
+                        stage = 'audio';
                         this.streamState = 'connecting';
                         this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
                         const source = this.audioContext.createMediaStreamSource(this.stream);
 
                         await this.audioContext.audioWorklet.addModule(workletBlobUrl);
+                        if (attempt !== this.connectionAttempt) return;
                         this.workletNode = new AudioWorkletNode(this.audioContext, 'mic-you-processor');
 
                         const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+                        stage = 'socket';
                         this.ws = new WebSocket(wsUrl);
                         this.ws.binaryType = 'arraybuffer';
 
@@ -925,22 +959,16 @@
                         };
 
                         this.ws.onclose = () => {
-                            if (this.streamState === 'streaming') {
-                                this.showToast(
-                                    this.lang === 'zh' ? '连接已断开' : 'Connection Lost',
-                                    'error'
-                                );
-                            }
-                            this.streamState = 'idle';
+                            this.failStreaming(this.lang === 'zh'
+                                ? '音频连接已断开，请确认电脑端 Web 服务仍在运行后重试。'
+                                : 'Audio connection closed. Check that Web mode is still running on the PC, then retry.');
                         };
 
                         this.ws.onerror = () => {
-                            this.errorMessage = this.lang === 'zh'
-                                ? '连接失败，请检查网络或刷新重试'
-                                : 'Connection Error, please check network';
-                            this.showToast(this.errorMessage, 'error');
-                            this.streamState = 'error';
-                            this.stopStreaming();
+                            // Browsers do not expose the HTTP status of a failed WebSocket handshake.
+                            this.failStreaming(this.lang === 'zh'
+                                ? '音频连接失败，请检查电脑端 Web 服务、证书和代理的 WebSocket 转发设置。'
+                                : 'Audio connection failed. Check the PC Web service, certificate, and proxy WebSocket forwarding.');
                         };
 
                         this.workletNode.port.onmessage = (e) => {
@@ -966,16 +994,67 @@
                         this.workletNode.connect(this.audioContext.destination);
 
                     } catch (err) {
-                        const msgZh = '访问麦克风失败，请在浏览器设置中允许麦克风权限并刷新';
-                        const msgEn = 'Microphone access failed. Allow permission in settings and refresh';
-                        this.errorMessage = this.lang === 'zh' ? msgZh : msgEn;
-                        this.showToast(this.errorMessage, 'error');
-                        this.streamState = 'error';
+                        if (attempt !== this.connectionAttempt) return;
+                        this.failStreaming(this.startErrorMessage(err, stage));
                         console.error('MicYou WebAudio error:', err);
                     }
                 },
 
+                startErrorMessage(err, stage) {
+                    const messages = {
+                        origin: {
+                            zh: '电脑端拒绝了此页面地址。请使用电脑端显示的 IP 地址，并检查代理的来源设置。',
+                            en: 'The PC rejected this page address. Use the IP address shown on the PC and check any proxy origin settings.'
+                        },
+                        server: {
+                            zh: '无法连接电脑端 Web 服务。请启动 Web 模式，并检查地址、端口和网络连接。',
+                            en: 'Cannot reach the PC Web service. Start Web mode and check the address, port, and network connection.'
+                        },
+                        permission: {
+                            zh: '麦克风访问被阻止。请在浏览器设置中允许此站点使用麦克风后重试。',
+                            en: 'Microphone access was blocked. Allow microphone access for this site in browser settings, then retry.'
+                        },
+                        missing: {
+                            zh: '未找到麦克风。请连接或启用麦克风后重试。',
+                            en: 'No microphone was found. Connect or enable a microphone, then retry.'
+                        },
+                        busy: {
+                            zh: '无法读取麦克风。请关闭其他正在使用麦克风的应用后重试。',
+                            en: 'Cannot read the microphone. Close other apps using it, then retry.'
+                        },
+                        unsupported: {
+                            zh: '此页面无法使用麦克风。请使用支持麦克风的浏览器，并通过 HTTPS 打开。',
+                            en: 'Microphone capture is unavailable. Use a supported browser and open the page over HTTPS.'
+                        },
+                        audio: {
+                            zh: '音频初始化失败。请使用较新版本的浏览器并重新加载页面。',
+                            en: 'Audio initialization failed. Use an up-to-date browser and reload the page.'
+                        },
+                        socket: {
+                            zh: '无法创建音频连接。请检查页面地址和浏览器的连接设置。',
+                            en: 'Cannot create the audio connection. Check the page address and browser connection settings.'
+                        }
+                    };
+                    let reason = stage === 'microphone' ? 'audio' : stage;
+                    if (err.message === 'origin_rejected') reason = 'origin';
+                    else if (err.message === 'microphone_unavailable') reason = 'unsupported';
+                    else if (stage === 'microphone') {
+                        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') reason = 'permission';
+                        else if (err.name === 'NotFoundError') reason = 'missing';
+                        else if (err.name === 'NotReadableError') reason = 'busy';
+                    }
+                    return messages[reason]?.[this.lang] || messages.audio[this.lang];
+                },
+
+                failStreaming(message) {
+                    this.stopStreaming();
+                    this.errorMessage = message;
+                    this.streamState = 'error';
+                    this.showToast(message, 'error');
+                },
+
                 stopStreaming() {
+                    this.connectionAttempt++;
                     if (this.workletNode) {
                         this.workletNode.disconnect();
                         this.workletNode = null;
@@ -989,6 +1068,10 @@
                         this.stream = null;
                     }
                     if (this.ws) {
+                        this.ws.onopen = null;
+                        this.ws.onmessage = null;
+                        this.ws.onclose = null;
+                        this.ws.onerror = null;
                         this.ws.close();
                         this.ws = null;
                     }
