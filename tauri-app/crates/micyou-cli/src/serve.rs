@@ -14,6 +14,7 @@
  */
 
 use crate::events::CliEventSink;
+use crate::jsonl::{JsonlEventSink, Output};
 use micyou_core::host::headless::HeadlessHost;
 use micyou_core::mode_lock::{self, RunMode};
 use micyou_core::server::{self, ServerState, StartRequest};
@@ -25,6 +26,7 @@ pub struct ServeArgs {
     pub device: Option<String>,
     pub bind: Option<String>,
     pub quiet: bool,
+    pub jsonl: bool,
 }
 
 /// Run the audio server in the foreground. CLI flags override the shared
@@ -32,33 +34,84 @@ pub struct ServeArgs {
 pub async fn run(args: ServeArgs) -> Result<(), String> {
     let request = StartRequest::resolve(args.port, args.mode.as_deref(), args.device, args.bind)?;
     mode_lock::acquire(RunMode::Cli)?;
-    let result = run_locked(request, args.quiet).await;
+    // Modified 2026-10-08: JSONL controls use a bounded
+    // stdout writer; the upstream human-readable mode remains unchanged.
+    let (output, writer) = if args.jsonl {
+        let (output, writer) = Output::start();
+        (Some(output), Some(writer))
+    } else {
+        (None, None)
+    };
+    let jsonl_sink = output
+        .as_ref()
+        .map(|output| Arc::new(JsonlEventSink::new(output.clone())));
+    let events: micyou_core::events::SharedEvents = match jsonl_sink.as_ref() {
+        Some(sink) => sink.clone(),
+        None => Arc::new(CliEventSink::new(args.quiet)),
+    };
+    let result = run_locked(request, args.jsonl, events.clone(), jsonl_sink.as_deref()).await;
+    drop(events);
+    drop(output);
+    if let Some(writer) = writer {
+        let _ = writer.join();
+    }
     mode_lock::release();
     result
 }
 
-async fn run_locked(request: StartRequest, quiet: bool) -> Result<(), String> {
+async fn run_locked(
+    request: StartRequest,
+    jsonl: bool,
+    events: micyou_core::events::SharedEvents,
+    jsonl_sink: Option<&JsonlEventSink>,
+) -> Result<(), String> {
     if request.mode == server::service::ConnectionMode::Usb {
-        println!("Setting up USB mode (adb for Android, usbmuxd for iOS) on port {}", request.port);
+        if jsonl {
+            eprintln!("Setting up USB mode (adb for Android, usbmuxd for iOS) on port {}", request.port);
+        } else {
+            println!("Setting up USB mode (adb for Android, usbmuxd for iOS) on port {}", request.port);
+        }
         micyou_core::platform::adb::enable_usb_mode(request.port, None)
             .map_err(|e| format!("enable_usb_mode failed: {e}"))?;
     }
 
-    let state = ServerState::new(
-        Arc::new(CliEventSink::new(quiet)),
-        Arc::new(HeadlessHost::new()),
-        None,
-    );
-    println!("{}", server::start_server(&state, request).await?);
+    let state = ServerState::new(events, Arc::new(HeadlessHost::new()), None);
+    let started = server::start_server(&state, request).await?;
+    let control_result = if let Some(sink) = jsonl_sink {
+        match sink.send_ready(serde_json::json!({
+            "v": 1,
+            "type": "ready",
+            "payload": {
+                "protocolVersion": 1,
+                "backendVersion": env!("CARGO_PKG_VERSION"),
+                "message": started
+            }
+        })) {
+            Ok(()) => crate::jsonl::run_control(&state, sink.output()).await,
+            Err(error) => Err(error),
+        }
+    } else {
+        println!("{started}");
+        println!("Press Ctrl+C to stop");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            eprintln!("cannot listen for Ctrl+C ({e}), stopping");
+        }
+        Ok(())
+    };
 
-    println!("Press Ctrl+C to stop");
-    if let Err(e) = tokio::signal::ctrl_c().await {
-        eprintln!("cannot listen for Ctrl+C ({e}), stopping");
+    if !jsonl {
+        println!("Stopping server...");
     }
-    println!("Stopping server...");
-    if let Err(e) = server::stop_server(&state).await {
-        eprintln!("error while stopping: {e}");
+    let stop_result = server::stop_server(&state)
+        .await
+        .map_err(|error| format!("error while stopping: {error}"));
+    if let Err(error) = &stop_result {
+        eprintln!("{error}");
     }
     server::service::close_output_device(&state);
+    control_result?;
+    if jsonl {
+        stop_result?;
+    }
     Ok(())
 }

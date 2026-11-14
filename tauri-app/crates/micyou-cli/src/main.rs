@@ -17,6 +17,8 @@ mod commands;
 mod events;
 mod logger;
 mod plugin_cmds;
+// Modified 2026-10-08: add a versioned JSON Lines frontend control channel.
+mod jsonl;
 mod serve;
 
 use clap::{Parser, Subcommand};
@@ -53,6 +55,9 @@ enum Commands {
         /// 禁用每秒打印的音频电平（level）与网络统计（stats）日志，避免终端刷屏
         #[arg(long, short = 'q', help = "静默模式：不打印每秒更新的音频电平与网络统计日志")]
         quiet: bool,
+        /// Emit versioned JSON Lines events and accept control commands on stdin.
+        #[arg(long)]
+        jsonl: bool,
     },
     /// 显示当前服务状态
     Status,
@@ -140,6 +145,7 @@ async fn main() {
     micyou_core::platform::alsa::filter_alsa_stderr();
 
     let cli = Cli::parse();
+    let structured_errors = matches!(&cli.command, Commands::Serve { jsonl: true, .. });
     logger::init(match cli.command {
         Commands::Serve { quiet: false, .. } => log::LevelFilter::Info,
         _ => log::LevelFilter::Warn,
@@ -151,6 +157,7 @@ async fn main() {
             device,
             bind,
             quiet,
+            jsonl,
         } => {
             let args = serve::ServeArgs {
                 port,
@@ -158,6 +165,7 @@ async fn main() {
                 device,
                 bind,
                 quiet,
+                jsonl,
             };
             serve::run(args).await
         }
@@ -235,6 +243,9 @@ async fn main() {
     };
 
     if let Err(e) = result {
+        if structured_errors {
+            jsonl::write_standalone_error(&e);
+        }
         eprintln!("error: {e}");
         std::process::exit(1);
     }
