@@ -84,10 +84,23 @@ impl StartRequest {
         bind_address: Option<String>,
     ) -> Result<Self, String> {
         let prefs = crate::config::load_server_prefs();
+        Self::resolve_with_prefs(&prefs, port, mode, output_device, bind_address)
+    }
+
+    fn resolve_with_prefs(
+        prefs: &crate::config::ServerPrefs,
+        port: Option<u16>,
+        mode: Option<&str>,
+        output_device: Option<String>,
+        bind_address: Option<String>,
+    ) -> Result<Self, String> {
         let mode = mode.unwrap_or(&prefs.mode).parse()?;
-        let bind_address = bind_address.or_else(|| saved_bind_address(&prefs, mode));
+        let bind_address = bind_address.or_else(|| saved_bind_address(prefs, mode));
         Ok(Self {
-            port: port.unwrap_or(prefs.port),
+            port: port.unwrap_or(match mode {
+                ConnectionMode::Web => prefs.web_port,
+                _ => prefs.port,
+            }),
             mode,
             bind_address,
             output_device: output_device
@@ -495,8 +508,47 @@ pub async fn stop_server(state: &ServerState) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{listen_address, saved_bind_address, validate_server_port, ConnectionMode};
+    use super::{
+        listen_address, saved_bind_address, validate_server_port, ConnectionMode, StartRequest,
+    };
     use crate::config::ServerPrefs;
+
+    #[test]
+    fn start_request_uses_saved_port_for_effective_mode() {
+        let prefs = ServerPrefs {
+            port: 9000,
+            web_port: 9443,
+            mode: "web".to_string(),
+            ..ServerPrefs::default()
+        };
+        for (mode, expected) in [
+            (None, 9443),
+            (Some("web"), 9443),
+            (Some("wifi"), 9000),
+            (Some("usb"), 9000),
+        ] {
+            let request = StartRequest::resolve_with_prefs(&prefs, None, mode, None, None).unwrap();
+            assert_eq!(request.port, expected, "mode override: {mode:?}");
+        }
+
+        let wifi_prefs = ServerPrefs {
+            mode: "wifi".to_string(),
+            ..prefs
+        };
+        let request =
+            StartRequest::resolve_with_prefs(&wifi_prefs, None, Some("web"), None, None).unwrap();
+        assert_eq!(request.port, 9443);
+    }
+
+    #[test]
+    fn start_request_explicit_port_overrides_both_saved_ports() {
+        let prefs = ServerPrefs::default();
+        for mode in ["web", "wifi", "usb"] {
+            let request =
+                StartRequest::resolve_with_prefs(&prefs, Some(12345), Some(mode), None, None).unwrap();
+            assert_eq!(request.port, 12345);
+        }
+    }
 
     #[test]
     fn usb_mode_listens_on_loopback_only() {
