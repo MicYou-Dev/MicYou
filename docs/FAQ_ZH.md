@@ -164,12 +164,12 @@ MicYou
 
 ### 连接设备后无声音输出
 
-请确保 VB-Audio 驱动已正确安装，且以下设备均**未被禁用**：
+请确保 Valve 的 Steam Streaming Microphone 驱动已正确安装并配置完成（MicYou Windows 安装包会自动处理），且设备**未被禁用**：
 
-- **输出设备**：CABLE Input (VB-Audio Virtual Cable)
-- **输入设备**：CABLE Output (VB-Audio Virtual Cable)
+- **MicYou 输出设备**：Steam Streaming Microphone
+- **录音软件输入设备**：麦克风 (Steam Streaming Microphone)
 
-检查方式：打开「设置」> 「声音」，验证两个设备均为**已启用**状态：
+检查方式：打开「设置」>「声音」>「更多声音设置」>「录音」，确认 **麦克风 (Steam Streaming Microphone)** 已启用。不要选择 **Steam Streaming Speakers**，它是同一驱动的播放端，不会出现在麦克风录音端。
 
 ![输入设备](https://github.com/user-attachments/assets/1cf5f97f-1647-4fb0-a152-85be2697df39)
 ![输出设备](https://github.com/user-attachments/assets/9e9ef42d-186f-42a6-ba4d-7b1a3815f860) -->

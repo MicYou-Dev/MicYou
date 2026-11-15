@@ -9,7 +9,7 @@ MicYou Web mode can connect a phone browser to a desktop on another network usin
 3. Find the desktop's VPN-assigned IP address. Use the desktop's address, not the phone's or the LAN address printed in the QR code. Choose an address assigned directly to the MicYou desktop when possible; routed aliases or proxy addresses may not pass the current WebSocket Origin check.
 4. On the phone, open `https://<desktop-private-ip>:<web-port>/`. Bracket IPv6 addresses, for example `https://[fd00::1234]:8443/`.
 5. MicYou uses a self-signed certificate. Verify the address belongs to your desktop before deciding whether to trust it in the browser. The browser must establish HTTPS successfully before microphone capture is available.
-6. Tap the connection button and allow microphone access. On Windows, select **CABLE Output (VB-Audio Virtual Cable)** as the input in your call or game; MicYou feeds **CABLE Input**.
+6. Tap the connection button and allow microphone access. On Windows, select **Microphone (Steam Streaming Microphone)** as the input in your call or game; MicYou renders into the same Steam Streaming Microphone endpoint (the installer configures the loopback, and the playback-only Steam Streaming Speakers sibling must not be selected).
 
 The desktop's Web listener does not itself authenticate individual users. Restrict network access to trusted devices with the VPN's access policy and the desktop firewall. Avoid publishing the microphone service to the public internet without appropriate authentication and access control.
 
