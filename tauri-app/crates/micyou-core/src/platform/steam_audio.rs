@@ -129,7 +129,11 @@ pub fn driver_dir(resource_hint: Option<&Path>) -> Option<PathBuf> {
 
 fn steam_install_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    for variable in ["ProgramFiles(x86)", "ProgramFiles"] {
+    for variable in [
+        "CommonProgramFiles(x86)",
+        "ProgramFiles(x86)",
+        "ProgramFiles",
+    ] {
         if let Some(base) = std::env::var_os(variable) {
             roots.push(PathBuf::from(base).join("Steam"));
         }
@@ -163,6 +167,31 @@ fn temp_dir() -> PathBuf {
     std::env::temp_dir().join("micyou_steam_audio")
 }
 
+/// The endpoint configuration script shipped beside the driver package.
+#[cfg(target_os = "windows")]
+fn configure_path(resource_hint: Option<&Path>, driver_dir: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(hint) = resource_hint {
+        candidates.push(hint.join("steam-audio").join("configure.ps1"));
+        candidates.push(
+            hint.join("resources")
+                .join("steam-audio")
+                .join("configure.ps1"),
+        );
+    }
+    if let Some(parent) = driver_dir.parent() {
+        candidates.push(parent.join("configure.ps1"));
+    }
+    candidates.push(
+        Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src-tauri/resources/steam-audio/configure.ps1"
+        ))
+        .to_path_buf(),
+    );
+    candidates.into_iter().find(|path| path.is_file())
+}
+
 #[cfg(target_os = "windows")]
 fn pnputil_path() -> PathBuf {
     let root = std::env::var_os("SystemRoot")
@@ -179,7 +208,7 @@ fn ps_quote(value: &str) -> String {
 /// Run the driver installs in one elevated PowerShell process. `pnputil`
 /// returns 3010 when a reboot is required, which is still a successful stage.
 #[cfg(target_os = "windows")]
-async fn run_installer(driver_dir: &Path) -> Result<bool, String> {
+async fn run_installer(driver_dir: &Path, configure: Option<&Path>) -> Result<bool, String> {
     let dir = temp_dir();
     tokio::fs::create_dir_all(&dir)
         .await
@@ -194,7 +223,13 @@ async fn run_installer(driver_dir: &Path) -> Result<bool, String> {
             ps_quote(&path.to_string_lossy())
         ));
     }
-    script.push_str("if ($reboot) { exit 3010 }\r\nexit 0\r\n");
+    let configure_script = configure
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_default();
+    script.push_str(&format!(
+        "$cfg = '{}'\r\nif (-not $reboot -and $cfg -and (Test-Path -LiteralPath $cfg)) {{\r\n  & $cfg\r\n  if ($LASTEXITCODE -ne 0) {{ exit $LASTEXITCODE }}\r\n}}\r\nif ($reboot) {{ exit 3010 }}\r\nexit 0\r\n",
+        ps_quote(&configure_script)
+    ));
 
     let script_path = dir.join("install-driver.ps1");
     tokio::fs::write(&script_path, script)
@@ -321,7 +356,8 @@ async fn install_inner(
 
     events.install_progress("Installing Steam Streaming Microphone driver...".to_string());
 
-    let reboot_required = match run_installer(&driver_dir).await {
+    let configure = configure_path(resource_hint, &driver_dir);
+    let reboot_required = match run_installer(&driver_dir, configure.as_deref()).await {
         Ok(reboot) => reboot,
         Err(error) => {
             let error_type = if error == "uac_denied" {

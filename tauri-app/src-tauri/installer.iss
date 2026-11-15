@@ -125,6 +125,21 @@ begin
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
     Log('Steam Streaming Microphone install failed with code ' + IntToStr(ResultCode));
+
+  // Valve's driver defaults to an 8-channel render format and +30 dB capture
+  // gain. Rendering 8 channels makes the loopback decimate the signal (a 1 kHz
+  // tone arrives as 125 Hz) and the capture boost clips every recording app.
+  // Set mono 48 kHz and unity capture gain, then cycle the audio endpoint
+  // builder; see resources/steam-audio/configure.ps1.
+  if FileExists(ExpandConstant('{app}\resources\steam-audio\configure.ps1')) then
+  begin
+    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+        '-NoProfile -ExecutionPolicy Bypass -File "' +
+        ExpandConstant('{app}\resources\steam-audio\configure.ps1') + '"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
+      Log('Steam Streaming Microphone format/volume configuration failed with code ' +
+        IntToStr(ResultCode));
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

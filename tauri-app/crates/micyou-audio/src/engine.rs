@@ -502,11 +502,18 @@ impl AudioOutputManager {
         let host = cpal::default_host();
 
         let device = if let Some(target) = target_device.clone() {
+            if target.to_lowercase().contains("steam streaming speakers") {
+                log::warn!("[Audio] '{}' is Valve's playback/loopback endpoint, not the virtual microphone. Select 'Steam Streaming Microphone' as MicYou's output device.", target);
+            }
             let mut matched_device = None;
             if let Ok(devices) = host.output_devices() {
                 for dev in devices {
                     if let Some(name) = device_name(&dev) {
-                        if name == target {
+                        let lower = name.to_lowercase();
+                        if name == target
+                            || (target.to_lowercase().contains("steam streaming microphone")
+                                && lower.contains("steam streaming microphone"))
+                        {
                             matched_device = Some(dev);
                             break;
                         }
@@ -521,28 +528,34 @@ impl AudioOutputManager {
             }
             matched_device.or_else(|| host.default_output_device())
         } else {
-            // Auto-detect virtual audio devices by platform
+            // Auto-detect virtual audio devices by platform.
             #[cfg(target_os = "windows")]
             {
+                let mut steam_device = None;
                 let mut cable_device = None;
                 if let Ok(devices) = host.output_devices() {
                     for dev in devices {
                         if let Some(name) = device_name(&dev) {
                             let lower = name.to_lowercase();
+                            if lower.contains("steam streaming microphone") {
+                                steam_device = Some(dev);
+                                break;
+                            }
                             if lower.contains("cable input")
                                 || lower.contains("vb-audio")
                                 || (lower.contains("cable") && !lower.contains("output"))
                             {
                                 cable_device = Some(dev);
-                                break;
                             }
                         }
                     }
                 }
-                if cable_device.is_none() {
-                    log::warn!("[Audio] VB-Cable not detected, falling back to default device. Note: Playing microphone audio through physical speakers may cause acoustic feedback.");
+                if steam_device.is_none() {
+                    log::warn!("[Audio] Steam Streaming Microphone not detected; install the Steam audio driver from the onboarding flow. Falling back to VB-Cable or the default output device.");
                 }
-                cable_device.or_else(|| host.default_output_device())
+                steam_device
+                    .or(cable_device)
+                    .or_else(|| host.default_output_device())
             }
             #[cfg(target_os = "macos")]
             {
