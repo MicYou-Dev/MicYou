@@ -18,8 +18,7 @@ clap.workspace = true
 log.workspace = true
 semver.workspace = true
 serde_json.workspace = true
-# Modified 2026-10-08: enable Tokio's bounded async channel for the JSON Lines reader.
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 wat.workspace = true
 zip.workspace = true
 
