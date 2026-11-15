@@ -22,6 +22,7 @@ pub mod firewall;
 #[cfg(target_os = "linux")]
 pub mod pipewire;
 pub mod resources;
+pub mod steam_audio;
 pub mod terminal;
 pub mod usbmux;
 pub mod vbcable;

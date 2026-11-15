@@ -1,4 +1,4 @@
-﻿#define MyAppName "MicYou"
+#define MyAppName "MicYou"
 #ifndef MyAppVersion
   #define MyAppVersion "2.2.0"
 #endif
@@ -19,9 +19,11 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableDirPage=no
 DisableProgramGroupPage=yes
-UsePreviousAppDir=yes
+; Always install for all users into Program Files: the firewall rules and the
+; Steam Streaming audio driver both need elevation, so a per-user install that
+; skips them is no longer offered. Do not inherit a previous per-user path.
+UsePreviousAppDir=no
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
 OutputBaseFilename={#MyAppName}_{#MyAppVersion}_x64-setup
 OutputDir=target\release\bundle\inno
 Compression=lzma2/max
@@ -34,36 +36,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Name: "chinesesimplified"; MessagesFile: "compiler:Default.isl,SimpChinese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Messages]
-; The firewall task is only offered in admin ("all users") install mode, so the
-; install-mode selection dialog nudges users toward that option by mentioning
-; the automatic Windows Firewall configuration.
-chinesesimplified.PrivilegesRequiredOverrideText1=%1 可以为所有用户安装（需要管理员权限，将自动配置 Windows 防火墙），或仅为当前用户安装。
-chinesesimplified.PrivilegesRequiredOverrideAllUsers=为所有用户安装（自动配置防火墙）(&A)
-chinesesimplified.PrivilegesRequiredOverrideAllUsersRecommended=为所有用户安装（推荐，自动配置防火墙）(&A)
-english.PrivilegesRequiredOverrideText1=%1 can be installed for all users (requires administrative privileges; Windows Firewall rules will be configured automatically), or for you only.
-english.PrivilegesRequiredOverrideAllUsers=Install for &all users (configures the Windows Firewall)
-english.PrivilegesRequiredOverrideAllUsersRecommended=Install for &all users (recommended; configures the Windows Firewall)
-chinesesimplified.PrivilegesRequiredOverrideCurrentUser=仅为当前用户安装（需手动配置防火墙）(&U)
-chinesesimplified.PrivilegesRequiredOverrideCurrentUserRecommended=仅为当前用户安装（需手动配置防火墙）(&U)
-english.PrivilegesRequiredOverrideCurrentUser=Install for &you only (requires manual firewall configuration)
-english.PrivilegesRequiredOverrideCurrentUserRecommended=Install for &you only (requires manual firewall configuration)
-
-[CustomMessages]
-chinesesimplified.NetworkGroupDescription=网络设置
-chinesesimplified.FirewallTaskDescription=放行 Windows 防火墙（推荐，允许 MicYou 通过防火墙接收来自 Android 设备的音频连接）
-english.NetworkGroupDescription=Network settings
-english.FirewallTaskDescription=Add Windows Firewall rules (recommended; allow MicYou to receive audio connections from Android devices through the firewall)
-
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-; Checked by default, like the firewall component in the qBittorrent installer.
-; Only offered in admin install mode: managing firewall rules requires
-; elevation, and elevating separately at the end of a per-user install proved
-; unreliable in practice. Users choosing "current user only" are informed via
-; the [Messages] overrides above that the all-users mode configures the
-; firewall automatically.
-Name: "firewall"; Description: "{cm:FirewallTaskDescription}"; GroupDescription: "{cm:NetworkGroupDescription}"; Check: IsAdminInstallMode
 
 [Files]
 Source: "..\target\release\micyou.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -87,14 +61,11 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 // Windows Firewall handling, modeled after the qBittorrent installer
 // (nsisFirewallW::AddAuthorizedApplication on install /
 //  RemoveAuthorizedApplication on uninstall):
-//   - install (task "firewall", checked by default, admin install mode only):
-//     add inbound allow rules for the GUI, CLI and TUI executables; all three
-//     frontends can host the same server that Android devices connect to.
+//   - install: add inbound allow rules for the GUI, CLI and TUI executables;
+//     all three frontends can host the same server that Android devices
+//     connect to. The installer always runs elevated, so this is mandatory.
 //   - uninstall: remove those rules unconditionally (a delete for a
 //     non-existent rule is a harmless no-op).
-// Per-user (non-admin) installs do not touch the firewall; the install-mode
-// dialog text ([Messages] overrides) points users to the all-users option
-// which configures it automatically.
 // Inno Setup has no built-in firewall support, so netsh advfirewall is used.
 // Non-zero exit codes are ignored on purpose.
 
@@ -125,15 +96,53 @@ begin
   ExecNetsh('advfirewall firewall add rule name="{#MyAppName} TUI" dir=in action=allow enable=yes profile=any program="' + AppDir + '\{#MyTuiExeName}"');
 end;
 
+// Install Valve's Steam Streaming audio driver from the files bundled under
+// resources\steam-audio\x64. pnputil returns 3010 when a reboot is required,
+// which still means the package was staged successfully. A missing or failed
+// driver package must not abort the application install.
+procedure InstallSteamAudioDriver;
+var
+  ResultCode: Integer;
+  DriverDir, MicInf, SpeakerInf: String;
+begin
+  DriverDir := ExpandConstant('{app}\resources\steam-audio\x64');
+  MicInf := DriverDir + '\SteamStreamingMicrophone.inf';
+  SpeakerInf := DriverDir + '\SteamStreamingSpeakers.inf';
+  if not (FileExists(MicInf) and FileExists(SpeakerInf)) then
+  begin
+    Log('Steam Streaming audio driver files are missing; skipping driver install');
+    exit;
+  end;
+
+  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+      '/add-driver "' + SpeakerInf + '" /install', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode)) or
+     ((ResultCode <> 0) and (ResultCode <> 3010)) then
+    Log('Steam Streaming Speakers install failed with code ' + IntToStr(ResultCode));
+
+  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+      '/add-driver "' + MicInf + '" /install', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode)) or
+     ((ResultCode <> 0) and (ResultCode <> 3010)) then
+    Log('Steam Streaming Microphone install failed with code ' + IntToStr(ResultCode));
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and IsAdminInstallMode and
-     WizardIsTaskSelected('firewall') then
+  if CurStep = ssPostInstall then
+  begin
+    // Both are mandatory: the installer requires administrator privileges for
+    // exactly these system-level steps.
+    InstallSteamAudioDriver;
     AddFirewallRules;
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if (CurUninstallStep = usPostUninstall) and IsAdminInstallMode then
+  if CurUninstallStep = usPostUninstall then
     RemoveFirewallRules;
+  // The Steam Streaming audio driver is intentionally left in place: Steam and
+  // other applications may use it, and removing a shared driver on uninstall
+  // can break those applications.
 end;

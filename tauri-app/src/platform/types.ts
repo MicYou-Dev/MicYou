@@ -112,6 +112,13 @@ export interface VBCableResult {
   message?: string | null;
 }
 
+/** Result of installing Valve's Steam Streaming audio driver. */
+export interface VirtualAudioResult {
+  success: boolean;
+  error_type?: string | null;
+  message?: string | null;
+}
+
 export interface BlackHoleStatus {
   installed: boolean;
   switch_audio_source: boolean;

@@ -19,8 +19,9 @@ export const supportedDistros = [
 
 const audioDevices = ref<string[]>([]);
 const vbcableDetected = ref(false);
-const vbcableInstalling = ref(false);
-const vbcableInstallProgress = ref('');
+const steamAudioDetected = ref(false);
+const virtualAudioInstalling = ref(false);
+const virtualAudioInstallProgress = ref('');
 const blackholeStatus = ref<BlackHoleStatus>({
   installed: false,
   switch_audio_source: false,
@@ -40,6 +41,14 @@ const hasVBCable = computed(() =>
     return lower.includes('cable') || lower.includes('vb-audio');
   }),
 );
+// Windows uses Valve's Steam Streaming Microphone by default; an existing
+// VB-CABLE install keeps working as a fallback for upgrades.
+const hasVirtualAudio = computed(
+  () =>
+    steamAudioDetected.value ||
+    hasVBCable.value ||
+    audioDevices.value.some((d) => d.toLowerCase().includes('steam streaming')),
+);
 const hasBlackHole = computed(() =>
   blackholeStatus.value.installed ||
   audioDevices.value.some((d) => d.toLowerCase().includes('blackhole')),
@@ -57,6 +66,15 @@ async function checkVBCableStatus() {
     vbcableDetected.value = await command('check_vbcable');
   } catch (e) {
     console.error('Failed to check VB-CABLE status:', e);
+  }
+}
+
+async function checkSteamAudioStatus() {
+  if (!isWindows) return;
+  try {
+    steamAudioDetected.value = await command('check_steam_audio');
+  } catch (e) {
+    console.error('Failed to check Steam Streaming Microphone status:', e);
   }
 }
 
@@ -89,29 +107,30 @@ async function fetchDevices() {
     console.error('Failed to fetch audio devices', e);
   }
   void checkVBCableStatus();
+  void checkSteamAudioStatus();
   void checkBlackHoleStatus();
   void checkPipeWireStatus();
 }
 
-async function installVBCable() {
-  vbcableInstalling.value = true;
-  vbcableInstallProgress.value = '';
+async function installVirtualAudio() {
+  virtualAudioInstalling.value = true;
+  virtualAudioInstallProgress.value = '';
   let unlisten: UnlistenFn | null = null;
   try {
-    unlisten = await onEvent('vbcable-install-progress', (payload) => {
-      vbcableInstallProgress.value = payload;
+    unlisten = await onEvent('virtual-audio-install-progress', (payload) => {
+      virtualAudioInstallProgress.value = payload;
     });
-    const result = await command('install_vbcable');
+    const result = await command('install_steam_audio');
     if (result.success) {
-      await checkVBCableStatus();
+      await checkSteamAudioStatus();
       audioDevices.value = await command('get_audio_devices');
     }
   } catch (e) {
-    console.error('VB-CABLE install failed:', e);
+    console.error('Steam Streaming Microphone install failed:', e);
   } finally {
     unlisten?.();
-    vbcableInstalling.value = false;
-    vbcableInstallProgress.value = '';
+    virtualAudioInstalling.value = false;
+    virtualAudioInstallProgress.value = '';
   }
 }
 
@@ -121,7 +140,7 @@ export function useOutputDevices() {
   // "auto" routes to the platform's virtual device when one is present.
   const isVirtualDeviceSelected = computed(() => {
     if (!settings.audioDevice || settings.audioDevice === 'auto') {
-      if (isWindows) return hasVBCable.value;
+      if (isWindows) return hasVirtualAudio.value;
       if (isMacOS) return hasBlackHole.value;
       if (isLinux) return pipewireStatus.value.available;
       return false;
@@ -130,6 +149,7 @@ export function useOutputDevices() {
     return (
       dev.includes('cable') ||
       dev.includes('vb-audio') ||
+      dev.includes('steam streaming') ||
       dev.includes('blackhole') ||
       dev.includes('micyou')
     );
@@ -140,19 +160,21 @@ export function useOutputDevices() {
   return {
     audioDevices,
     hasVBCable,
+    hasVirtualAudio,
+    steamAudioDetected,
     hasBlackHole,
     blackholeStatus,
     pipewireStatus,
     selectedDistro,
     currentPipewireInstallCommand,
-    vbcableInstalling,
-    vbcableInstallProgress,
+    virtualAudioInstalling,
+    virtualAudioInstallProgress,
     isVirtualDeviceSelected,
     isExplicitPhysicalDevice: computed(() => !isAutoSelected.value && !isVirtualDeviceSelected.value),
     isAutoFallbackToPhysical: computed(() => isAutoSelected.value && !isVirtualDeviceSelected.value),
     fetchDevices,
-    installVBCable,
-    openVBCableDownload: () => openUrl('https://vb-audio.com/Cable/'),
+    installVirtualAudio,
+    openSteamAudioDownload: () => openUrl('https://github.com/milo-src/SteamLinkAudioDriver'),
     openBlackHoleDownload: () => openUrl('https://github.com/ExistentialAudio/BlackHole'),
   };
 }

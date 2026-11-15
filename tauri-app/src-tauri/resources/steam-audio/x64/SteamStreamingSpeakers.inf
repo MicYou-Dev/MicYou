@@ -1,0 +1,111 @@
+[Version]
+Signature="$CHICAGO$"
+Class=MEDIA
+Provider=%Provider%
+ClassGUID={4d36e96c-e325-11ce-bfc1-08002be10318}
+DriverVer=07/20/2017,17.56.13.764
+CatalogFile=SteamStreamingSpeakers.cat
+
+[SourceDisksNames]
+222="SteamStreamingSpeakers Driver Disk","",222
+
+[SourceDisksFiles]
+SteamStreamingSpeakers.sys=222
+
+[Manufacturer]
+%Manufacturer%=SteamStreamingSpeakersDevice,NTamd64
+
+[SteamStreamingSpeakersDevice.NTamd64]
+%SteamStreamingSpeakers.DeviceDesc%=SteamStreamingSpeakers,ROOT\SteamStreamingSpeakers
+
+[DestinationDirs]
+SteamStreamingSpeakers.CopyList=10,system32\drivers
+
+;======================================================
+; SteamStreamingSpeakers
+;======================================================
+[SteamStreamingSpeakers.CopyList]
+SteamStreamingSpeakers.sys
+
+[SteamStreamingSpeakers.AddReg]
+HKR,,AssociatedFilters,,"wdmaud,redbook"
+HKR,,Driver,,SteamStreamingSpeakers.sys
+
+HKR,Drivers,SubClasses,,"wave,mixer"
+
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
+
+HKR,Drivers\wave\wdmaud.drv,Description,,%SteamStreamingSpeakers.DeviceDesc%
+HKR,Drivers\mixer\wdmaud.drv,Description,,%SteamStreamingSpeakers.DeviceDesc%
+
+;======================================================
+; COMMON
+;======================================================
+[SteamStreamingSpeakers.I.Wave]
+AddReg=SteamStreamingSpeakers.I.Wave.AddReg
+[SteamStreamingSpeakers.I.Wave.AddReg]
+HKR,,CLSID,,%CLSID_Proxy%
+HKR,,FriendlyName,,%SteamStreamingSpeakers.Wave.szPname%
+
+[SteamStreamingSpeakers.I.Topo]
+AddReg=SteamStreamingSpeakers.I.Topo.AddReg
+[SteamStreamingSpeakers.I.Topo.AddReg]
+HKR,,CLSID,,%CLSID_Proxy%
+HKR,,FriendlyName,,%SteamStreamingSpeakers.Topo.szPname%
+
+;======================================================
+; SteamStreamingSpeakers.NT
+;======================================================
+[SteamStreamingSpeakers.NT]
+Include=ks.inf,wdmaudio.inf
+Needs=KS.Registration, WDMAUDIO.Registration
+CopyFiles=SteamStreamingSpeakers.CopyList
+AddReg=SteamStreamingSpeakers.AddReg
+
+[SteamStreamingSpeakers.NT.Interfaces]
+AddInterface=%KSCATEGORY_AUDIO%,%KSNAME_Wave%,SteamStreamingSpeakers.I.Wave
+AddInterface=%KSCATEGORY_RENDER%,%KSNAME_Wave%,SteamStreamingSpeakers.I.Wave
+AddInterface=%KSCATEGORY_CAPTURE%,%KSNAME_Wave%,SteamStreamingSpeakers.I.Wave
+AddInterface=%KSCATEGORY_AUDIO%,%KSNAME_Topology%,SteamStreamingSpeakers.I.Topo
+
+[SteamStreamingSpeakers.NT.Services]
+AddService=SteamStreamingSpeakers,0x00000002,SteamStreamingSpeakers_Service_Inst
+
+[SteamStreamingSpeakers_Service_Inst]
+DisplayName=%SteamStreamingSpeakers.SvcDesc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%10%\system32\drivers\SteamStreamingSpeakers.sys
+
+[DeviceInstall32]
+AddDevice = ROOT\SteamStreamingSpeakers\0000,,SteamStreamingSpeakers_RootDevice_Inst
+
+[SteamStreamingSpeakers_RootDevice_Inst]
+HardwareIds = ROOT\SteamStreamingSpeakers
+
+;======================================================
+; COMMON
+;======================================================
+[Strings]
+Provider="Valve Corporation"
+Manufacturer="Valve Corporation Audio DDK"
+
+SteamStreamingSpeakers.DeviceDesc="Steam Streaming Speakers"
+
+SteamStreamingSpeakers.Wave.szPname="Steam Streaming Speakers Wave"
+SteamStreamingSpeakers.Topo.szPname="Steam Streaming Speakers Topology"
+
+CLSID_Proxy="{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO="{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER="{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_CAPTURE="{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+
+KSNAME_Wave="Wave"
+KSNAME_Topology="Topology"
+
+SteamStreamingSpeakers.SvcDesc="Steam Streaming Speakers"
+
+
+

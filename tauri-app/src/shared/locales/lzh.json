@@ -170,11 +170,11 @@
       "glass": "毛玻璃"
     },
     "vbcable": {
-      "title": "VB-Cable 转发",
+      "title": "Steam Streaming Microphone 转发",
       "installed": "已装",
       "notDetected": "未探得",
-      "desc": "欲将音频转至他应用，需装 VB-Audio Virtual Cable。",
-      "download": "下载 VB-Cable"
+      "desc": "欲将音频转至他应用，MicYou 输出至 Steam Streaming Speakers，他应用择 Steam Streaming Microphone 为输入即可。驱动随装附之，不复须独下 VB-CABLE。",
+      "download": "开驱动之源"
     },
     "blackhole": {
       "installed": "已装",
@@ -196,9 +196,9 @@
       "auto": "自动",
       "routingActive": "虚拟音频路由已启，音频将转至虚拟装置。",
       "physicalWarningTitle": "所择者乃实体扬声之器",
-      "physicalWarningDesc": "微音器之声直出于扬声器。若两者同处一室，恐起大鸣回响。宜设虚拟音具（如 VB-Cable）以避之。",
+      "physicalWarningDesc": "微音器之声直出于扬声器。若两者同处一室，恐起大鸣回响。宜设虚拟音具（如 Steam Streaming Microphone）以避之。",
       "noVirtualDeviceTitle": "未察得虚拟音具",
-      "noVirtualDeviceDesc": "今退而用官定本设扬声器。若与微音器相近，恐生回声，宜速设虚拟音具（如 VB-Cable）。"
+      "noVirtualDeviceDesc": "今退而用官定本设扬声器。若与微音器相近，恐生回声，宜速设 Steam Streaming Microphone 为输出。"
     },
     "spectrum": {
       "title": "实时频谱",
@@ -586,7 +586,7 @@
     "step3Title": "三、启传输",
     "step3Desc": "点启钮以始音频传输",
     "step4Title": "四、配音频",
-    "step4Desc": "于录软中择 VB-Cable 为输入",
+    "step4Desc": "于录软中择 Steam Streaming Microphone 为输入",
     "videoGuide": "视频教程",
     "textGuide": "文字教程",
     "gotIt": "吾已知矣",
@@ -597,18 +597,18 @@
     "startUsing": "始用"
   },
   "vbcableDetect": {
-    "title": "需 VB-Cable 驱动",
-    "message": "MicYou 于 Windows 上需 VB-Cable 方可运行，欲自装乎？",
+    "title": "需虚拟麦克风驱动",
+    "message": "MicYou 于 Windows 上以 Valve 之 Steam Streaming Microphone 为虚拟麦克风，驱动随装而来，欲自装乎？",
     "autoInstall": "自装",
     "manualDownload": "手下载",
     "skipForNow": "暂略",
-    "installed": "VB-Cable 已装"
+    "installed": "Steam Streaming Microphone 已装"
   },
   "vbcableInstall": {
     "installing": "装中...",
-    "downloading": "下载中...",
+    "downloading": "备驱动中...",
     "configuring": "配中...",
-    "waitingDevice": "候装置...",
+    "waitingDevice": "候音频装置...",
     "complete": "装成",
     "failed": "装败",
     "adminRequired": "需管理员权限，请准 UAC 之示。",

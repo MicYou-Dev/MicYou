@@ -178,6 +178,8 @@ pub fn run() {
             commands::audio::check_pipewire,
             commands::audio::check_vbcable,
             commands::audio::install_vbcable,
+            commands::audio::check_steam_audio,
+            commands::audio::install_steam_audio,
             commands::audio::check_blackhole,
             commands::audio::set_blackhole_as_input,
             commands::audio::restore_input_device,

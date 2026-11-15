@@ -170,11 +170,11 @@
       "glass": "毛玻璃拟态"
     },
     "vbcable": {
-      "title": "VB-电缆 驱动器件项",
+      "title": "Steam Streaming Microphone",
       "installed": "已经安装了",
       "notDetected": "没有安装",
-      "desc": "若要将麦克风声音路由到其他应用程序（如 OBS 或 Discord），你需要安装 VB-Audio Virtual Cable",
-      "download": "下载 VB-Cable"
+      "desc": "MicYou renders the microphone audio into Steam Streaming Speakers, so other applications can select Steam Streaming Microphone as their input device. The driver ships with the MicYou installer, so VB-CABLE is no longer needed.",
+      "download": "Open Driver Source"
     },
     "blackhole": {
       "installed": "已经安装了",
@@ -196,9 +196,9 @@
       "auto": "自动",
       "routingActive": "虚拟音频路由已激活，声音直接整到虚拟设备里头",
       "physicalWarningTitle": "当前选的是物理大喇叭",
-      "physicalWarningDesc": "手机麦克风的声音会直接从大喇叭里放出来，要是手机和大喇叭在同一屋里，极易搞出严重回声甚至啸叫，强烈建议整一个虚拟音频设备（比如 VB-Cable）",
+      "physicalWarningDesc": "手机麦克风的声音会直接从大喇叭里放出来，要是手机和大喇叭在同一屋里，极易搞出严重回声甚至啸叫，强烈建议整一个虚拟音频设备（比如 Steam Streaming Microphone）",
       "noVirtualDeviceTitle": "没找着虚拟音频设备",
-      "noVirtualDeviceDesc": "当前自动掉回到系统默认大喇叭放音了，要是跟手机在同一屋里容易有回声，建议赶紧整一个虚拟音频驱动（比如 VB-Cable）"
+      "noVirtualDeviceDesc": "当前自动掉回到系统默认大喇叭放音了，要是跟手机在同一屋里容易有回声，建议安装 Steam Streaming Microphone 并将其设为输出设备"
     },
     "spectrum": {
       "title": "实时频谱（原始 vs 处理后）项",
@@ -586,7 +586,7 @@
     "step3Title": "3. 开始传输项",
     "step3Desc": "点击开始按钮启动音频传输项",
     "step4Title": "4. 配置音频项",
-    "step4Desc": "在录音软件中选择VB-电缆作为输入设备项",
+    "step4Desc": "在录音软件中选择 Steam Streaming Microphone 作为输入设备",
     "step4DescMac": "在录音软件中选择黑洞作为输入设备项",
     "videoGuide": "视频教程项",
     "textGuide": "文字教程项",
@@ -598,18 +598,18 @@
     "startUsing": "开始使用"
   },
   "vbcableDetect": {
-    "title": "VB-Cable Driver Required",
-    "message": "VB-Cable driver is required for MicYou to function as a virtual microphone on Windows. Would you like to install it automatically?",
+    "title": "Virtual Microphone Driver Required",
+    "message": "MicYou uses Valve's Steam Streaming Microphone as its virtual microphone on Windows. The driver ships with MicYou; install it automatically?",
     "autoInstall": "Install Automatically",
     "manualDownload": "Manual Download",
     "skipForNow": "Skip for Now",
-    "installed": "已经安装了"
+    "installed": "Steam Streaming Microphone 已经安装了"
   },
   "vbcableInstall": {
     "installing": "正在安装 VB-电缆...",
-    "downloading": "正在下载...",
+    "downloading": "Preparing driver...",
     "configuring": "正在配置...",
-    "waitingDevice": "等待设备初始化...",
+    "waitingDevice": "Waiting for the audio device...",
     "complete": "配置完成了呀",
     "failed": "VB-Cable 安装失败了: %s",
     "adminRequired": "需要管理员权限，请批准 UAC 提示",

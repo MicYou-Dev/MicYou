@@ -2,7 +2,7 @@
 
 ## Overview
 
-MicYou turns an Android phone into a PC microphone: the phone captures and streams audio, the desktop receives it and plays it into a virtual mic (VB-CABLE on Windows, BlackHole on macOS, PipeWire on Linux) or serves it to a browser over HTTPS
+MicYou turns an Android phone into a PC microphone: the phone captures and streams audio, the desktop receives it and plays it into a virtual mic (Steam Streaming Microphone on Windows, BlackHole on macOS, PipeWire on Linux) or serves it to a browser over HTTPS
 
 Two codebases share one wire protocol:
 
@@ -55,7 +55,7 @@ Workspace crates under `tauri-app/crates/`:
 |---|---|
 | `micyou-protocol` | prost wire format and magic constants |
 | `micyou-infer` | zero-dependency pure-Rust VM for the statically compiled MCYI model blobs (PureVox6 / AEC7); replaces ort/ONNX Runtime, see `docs/pure-rust-inference.md` |
-| `micyou-core` | everything server-side, no Tauri dependency: `server/` (state, lifecycle, service, audio pipeline, output), `transport/` (tcp, udp, web, jitter buffer, opus, session, net_bind), `plugins/`, `platform/` (adb, pipewire, vbcable, blackhole, accent, firewall, terminal), `config`, `settings`, `events`, `host`, `modes`, `mode_lock` |
+| `micyou-core` | everything server-side, no Tauri dependency: `server/` (state, lifecycle, service, audio pipeline, output), `transport/` (tcp, udp, web, jitter buffer, opus, session, net_bind), `plugins/`, `platform/` (adb, pipewire, steam_audio, vbcable, blackhole, accent, firewall, terminal), `config`, `settings`, `events`, `host`, `modes`, `mode_lock` |
 | `micyou-audio` | cpal output engine, DSP chain (native PureVox6/AEC7 models embedded via `micyou-infer`, RNNoise noise suppression), loopback capture |
 | `micyou-plugin` | plugin runtime: manifest, WASM sandbox (wasmi with fuel limits), native C ABI (libloading), bus, DSP hook |
 | `micyou-cli`, `micyou-tui` | headless frontends on `micyou-core`, no Tauri in their dependency tree; bundled into the GUI as Tauri sidecars (`externalBin`) by `prepare-sidecars.js` |
