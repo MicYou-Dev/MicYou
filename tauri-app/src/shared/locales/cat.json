@@ -173,7 +173,7 @@
       "title": "Steam Streaming Microphone 转发喵~",
       "installed": "已安装喵~",
       "notDetected": "未检测到喵~",
-      "desc": "要把音频路由到其他应用（如 OBS 或 Discord）喵~MicYou 会输出到 Steam Streaming Speakers，其他应用拣 Steam Streaming Microphone 做输入就啱喵~驱动跟住安装包一齐装，唔使再下载 VB-CABLE 喵~",
+      "desc": "要把音频路由到其他应用（如 OBS 或 Discord）喵~MicYou 会写入 Steam Streaming Microphone 的播放端点，其他应用拣同名 Steam Streaming Microphone 做输入就啱喵~驱动跟住安装包一齐装，唔使再下载 VB-CABLE 喵~",
       "download": "打开驱动来源喵~"
     },
     "blackhole": {

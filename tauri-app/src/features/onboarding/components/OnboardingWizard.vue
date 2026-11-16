@@ -22,7 +22,7 @@ const installError = ref('');
 
 const track = useListeners();
 
-const TOTAL_STEPS_WINDOWS = 4;
+const TOTAL_STEPS_WINDOWS = 3;
 const TOTAL_STEPS_OTHER = 2;
 
 const totalSteps = isWindows ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
@@ -32,7 +32,7 @@ onMounted(async () => {
     try {
       virtualAudioInstalled.value = await command('check_steam_audio');
       if (virtualAudioInstalled.value) {
-        step.value = 4;
+        step.value = 3;
       }
     } catch (e) {
       console.error('Failed to check Steam Streaming Microphone:', e);
@@ -46,7 +46,7 @@ onMounted(async () => {
 
 function skip() {
   if (isWindows && step.value === 1) {
-    step.value = 4;
+    step.value = 3;
   } else {
     complete();
   }
@@ -79,7 +79,7 @@ async function installVirtualAudio() {
 }
 
 async function openManualDownload() {
-  await openUrl('https://github.com/milo-src/SteamLinkAudioDriver');
+  await openUrl('https://github.com/MicYou-Dev/MicYou/releases/latest');
 }
 
 async function openVideoGuide() {
@@ -184,11 +184,10 @@ async function openTextGuide() {
         </template>
       </div>
 
-      <!-- Step 3 is the install in progress state shown inside step 2; the
-           wizard only advances to the completion page once the driver exists. -->
+      <!-- Step 2 is the install state; step 3 is the completion page. -->
 
-      <!-- Step 4: Complete -->
-      <div v-else-if="step === 4" class="p-6 space-y-5">
+      <!-- Step 3: Complete -->
+      <div v-else-if="step === 3" class="p-6 space-y-5">
         <div class="flex items-center gap-3">
           <CheckCircle2 class="w-8 h-8 text-green-400" />
           <h2 class="text-xl font-bold text-on-surface">{{ t('onboarding.complete') }}</h2>
@@ -214,13 +213,13 @@ async function openTextGuide() {
         <div class="flex items-center gap-2">
           <button
             v-if="step === 2 && virtualAudioInstalled"
-            @click="step = 4"
+            @click="step = 3"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary flex items-center gap-1 transition-colors"
           >
             {{ t('onboarding.next') }} <ArrowRight class="w-4 h-4" />
           </button>
           <button
-            v-if="step === 4"
+            v-if="step === 3"
             @click="complete"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary transition-colors"
           >

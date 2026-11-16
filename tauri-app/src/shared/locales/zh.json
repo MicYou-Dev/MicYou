@@ -175,7 +175,7 @@
       "title": "Steam Streaming Microphone",
       "installed": "已安装",
       "notDetected": "未检测到",
-      "desc": "MicYou 把麦克风音频输出到 Steam Streaming Speakers，其他应用即可选择 Steam Streaming Microphone 作为输入设备。驱动随 MicYou 安装包一起安装，不再需要单独下载 VB-CABLE。",
+      "desc": "MicYou 将麦克风音频写入 Steam Streaming Microphone 的播放端点，其他应用选择同名 Steam Streaming Microphone 作为输入设备即可。驱动随 MicYou 安装包一起安装，不再需要单独下载 VB-CABLE。",
       "download": "打开驱动来源"
     },
     "blackhole": {

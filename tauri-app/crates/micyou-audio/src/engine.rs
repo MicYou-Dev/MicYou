@@ -502,18 +502,24 @@ impl AudioOutputManager {
         let host = cpal::default_host();
 
         let device = if let Some(target) = target_device.clone() {
-            if target.to_lowercase().contains("steam streaming speakers") {
-                log::warn!("[Audio] '{}' is Valve's playback/loopback endpoint, not the virtual microphone. Select 'Steam Streaming Microphone' as MicYou's output device.", target);
+            let target_lower = target.to_lowercase();
+            let target_is_speakers = target_lower.contains("steam streaming speakers");
+            if target_is_speakers {
+                log::warn!("[Audio] '{}' is Valve's playback/loopback endpoint, not the virtual microphone. Falling back to 'Steam Streaming Microphone'.", target);
             }
             let mut matched_device = None;
             if let Ok(devices) = host.output_devices() {
                 for dev in devices {
                     if let Some(name) = device_name(&dev) {
                         let lower = name.to_lowercase();
-                        if name == target
-                            || (target.to_lowercase().contains("steam streaming microphone")
-                                && lower.contains("steam streaming microphone"))
+                        if (target_is_speakers
+                            || target_lower.contains("steam streaming microphone"))
+                            && lower.contains("steam streaming microphone")
                         {
+                            matched_device = Some(dev);
+                            break;
+                        }
+                        if !target_is_speakers && name == target {
                             matched_device = Some(dev);
                             break;
                         }
@@ -584,6 +590,14 @@ impl AudioOutputManager {
         let device = device.ok_or("No output device available")?;
 
         let config = device.default_output_config()?;
+        if let Some(name) = device_name(&device) {
+            if name.to_lowercase().contains("steam streaming microphone") && config.channels() > 2 {
+                log::warn!(
+                    "[Audio] Steam Streaming Microphone is still {} channels; rerun MicYou setup/repair to apply the mono endpoint configuration.",
+                    config.channels()
+                );
+            }
+        }
         self.device_sample_rate = config.sample_rate();
         self.device_channels = config.channels() as usize;
 

@@ -100,10 +100,44 @@ end;
 // resources\steam-audio\x64. pnputil returns 3010 when a reboot is required,
 // which still means the package was staged successfully. A missing or failed
 // driver package must not abort the application install.
+procedure MarkSteamAudioPending;
+var
+  PendingDir: String;
+begin
+  PendingDir := ExpandConstant('{userappdata}\micyou');
+  ForceDirectories(PendingDir);
+  SaveStringToFile(PendingDir + '\steam_audio_pending',
+    'restart required to configure the Steam Streaming Microphone', False);
+end;
+
+procedure RemovePendingSteamAudioMarker;
+begin
+  DeleteFile(ExpandConstant('{userappdata}\micyou\steam_audio_pending'));
+end;
+
+// Per-user installs from before the all-users-only switch keep their uninstall
+// entry in HKCU, so Inno cannot see the old installation from HKLM and would
+// leave a second copy behind. Remove it first (silently, keeping user data).
+procedure RemovePreviousPerUserInstall;
+var
+  UninstallString: String;
+  ResultCode: Integer;
+begin
+  if RegQueryStringValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{C8E6D8A6-3A1B-4E38-B76B-C9DB2A0058C0}_is1',
+      'UninstallString', UninstallString) then
+  begin
+    Log('Removing previous per-user installation: ' + UninstallString);
+    Exec(RemoveQuotes(UninstallString), '/VERYSILENT /NORESTART', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 procedure InstallSteamAudioDriver;
 var
   ResultCode: Integer;
   DriverDir, MicInf, SpeakerInf: String;
+  RebootRequired: Boolean;
 begin
   DriverDir := ExpandConstant('{app}\resources\steam-audio\x64');
   MicInf := DriverDir + '\SteamStreamingMicrophone.inf';
@@ -114,36 +148,53 @@ begin
     exit;
   end;
 
+  RebootRequired := False;
   if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
       '/add-driver "' + SpeakerInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
-    Log('Steam Streaming Speakers install failed with code ' + IntToStr(ResultCode));
+    Log('Steam Streaming Speakers install failed with code ' + IntToStr(ResultCode))
+  else if ResultCode = 3010 then
+    RebootRequired := True;
 
   if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
       '/add-driver "' + MicInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
-    Log('Steam Streaming Microphone install failed with code ' + IntToStr(ResultCode));
+    Log('Steam Streaming Microphone install failed with code ' + IntToStr(ResultCode))
+  else if ResultCode = 3010 then
+    RebootRequired := True;
 
   // Valve's driver defaults to an 8-channel render format and +30 dB capture
   // gain. Rendering 8 channels makes the loopback decimate the signal (a 1 kHz
   // tone arrives as 125 Hz) and the capture boost clips every recording app.
   // Set mono 48 kHz and unity capture gain, then cycle the audio endpoint
   // builder; see resources/steam-audio/configure.ps1.
-  if FileExists(ExpandConstant('{app}\resources\steam-audio\configure.ps1')) then
+  if RebootRequired then
+  begin
+    // The endpoints do not exist until the reboot; persist the pending state
+    // so the next MicYou setup run (which sees endpoint_ready() == false)
+    // executes configure.ps1 after the reboot.
+    MarkSteamAudioPending;
+    Log('Steam Streaming audio driver staged; endpoint configuration deferred until reboot');
+  end
+  else if FileExists(ExpandConstant('{app}\resources\steam-audio\configure.ps1')) then
   begin
     if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
         '-NoProfile -ExecutionPolicy Bypass -File "' +
         ExpandConstant('{app}\resources\steam-audio\configure.ps1') + '"',
         '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
       Log('Steam Streaming Microphone format/volume configuration failed with code ' +
-        IntToStr(ResultCode));
+        IntToStr(ResultCode))
+    else
+      RemovePendingSteamAudioMarker;
   end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then
+    RemovePreviousPerUserInstall;
   if CurStep = ssPostInstall then
   begin
     // Both are mandatory: the installer requires administrator privileges for

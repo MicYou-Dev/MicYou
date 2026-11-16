@@ -206,11 +206,15 @@ pub fn cmd_mics() {
     }
     #[cfg(target_os = "windows")]
     {
-        let installed = micyou_core::platform::vbcable::is_installed();
-        println!("VB-CABLE status:");
+        let installed = micyou_core::platform::steam_audio::is_installed();
+        println!("Steam Streaming Microphone status:");
         println!("  installed: {installed}");
+        println!(
+            "  driver package: {}",
+            micyou_core::platform::steam_audio::driver_present()
+        );
         if !installed {
-            println!("  run `micyou-cli mics install` to install VB-CABLE");
+            println!("  run `micyou-cli mics install` to configure Steam Streaming Microphone");
         }
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -223,7 +227,7 @@ pub fn cmd_mics() {
 pub async fn cmd_mics_install() -> Result<(), String> {
     let events: micyou_core::events::SharedEvents =
         std::sync::Arc::new(crate::events::CliEventSink::new(false));
-    let result = micyou_core::platform::vbcable::install(events).await;
+    let result = micyou_core::platform::steam_audio::install(None, events).await;
     println!(
         "{}",
         serde_json::to_string_pretty(&result).unwrap_or_default()

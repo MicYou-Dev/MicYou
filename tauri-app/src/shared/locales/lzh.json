@@ -173,7 +173,7 @@
       "title": "Steam Streaming Microphone 转发",
       "installed": "已装",
       "notDetected": "未探得",
-      "desc": "欲将音频转至他应用，MicYou 输出至 Steam Streaming Speakers，他应用择 Steam Streaming Microphone 为输入即可。驱动随装附之，不复须独下 VB-CABLE。",
+      "desc": "欲将音频转至他应用，MicYou 写入 Steam Streaming Microphone 之播放端点，他应用择同名 Steam Streaming Microphone 为输入即可。驱动随装附之，不复须独下 VB-CABLE。",
       "download": "开驱动之源"
     },
     "blackhole": {

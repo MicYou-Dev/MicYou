@@ -75,7 +75,7 @@ enum Commands {
         #[command(subcommand)]
         action: ChainAction,
     },
-    /// 平台虚拟麦克风状态（PipeWire / BlackHole / VB-Cable）
+    /// 平台虚拟麦克风状态（PipeWire / BlackHole / Steam Streaming Microphone）
     Mics {
         /// 安装虚拟麦克风驱动（仅 Windows）
         #[arg(long)]
@@ -215,7 +215,7 @@ async fn main() {
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    Err("install is only supported on Windows (VB-CABLE)".to_string())
+                    Err("install is only supported on Windows (Steam Streaming Microphone)".to_string())
                 }
             } else {
                 commands::cmd_mics();

@@ -175,7 +175,7 @@
       "title": "Steam Streaming Microphone",
       "installed": "Installed",
       "notDetected": "Not Detected",
-      "desc": "MicYou renders the microphone audio into Steam Streaming Speakers, so other applications can select Steam Streaming Microphone as their input device. The driver is bundled with MicYou and installed during setup, replacing the separate VB-CABLE download.",
+      "desc": "MicYou renders the microphone audio into the Steam Streaming Microphone playback endpoint, so applications can select Steam Streaming Microphone as their input device. The driver is bundled with MicYou and installed during setup, replacing the separate VB-CABLE download.",
       "download": "Open Driver Source"
     },
     "blackhole": {

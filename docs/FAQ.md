@@ -170,12 +170,12 @@ MicYou
 
 ### No audio output after connecting
 
-Please ensure Valve's Steam Streaming Microphone driver is installed and configured (the MicYou Windows installer does this automatically) and that the device is **not disabled**:
+Please ensure that the VB-Audio driver is correctly installed and that the following devices are **not disabled**:
 
-- **MicYou output device**: Steam Streaming Microphone
-- **Recording app input device**: Microphone (Steam Streaming Microphone)
+- **Output Device**: CABLE Input (VB-Audio Virtual Cable)
+- **Input Device**: CABLE Output (VB-Audio Virtual Cable)
 
-To check: Open Settings > Sound > More sound settings > Recording and verify **Microphone (Steam Streaming Microphone)** is enabled. Do not select **Steam Streaming Speakers**: it is the playback sibling of the same driver and never feeds the microphone capture endpoint.
+To check: Open Settings > Sound, and verify both devices are **Enabled**:
 
 ![Input device](https://github.com/user-attachments/assets/1cf5f97f-1647-4fb0-a152-85be2697df39)
 ![Output device](https://github.com/user-attachments/assets/9e9ef42d-186f-42a6-ba4d-7b1a3815f860) -->
