@@ -17,8 +17,8 @@ use crate::events::Event;
 use crate::i18n;
 use crate::theme::{self, Rgba, Theme};
 use crossterm::event::{
-    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind as K,
+    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind as K,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -1257,6 +1257,13 @@ pub fn run_tui(
                 {
                     match event::read().map_err(|e| e.to_string())? {
                         CrosstermEvent::Key(key) => {
+                            // crossterm reports both key-down and key-up events on
+                            // Windows. Acting on the up event applies every binding
+                            // twice (one Down press moves two rows), so only press
+                            // and repeat events count as input.
+                            if !is_actionable_key(&key) {
+                                continue;
+                            }
                             if handle_key(&mut app, key, &state) {
                                 break;
                             }
@@ -1411,6 +1418,13 @@ fn act_conn(app: &mut TuiApp, idx: usize) {
     }
 }
 
+/// Windows reports a key-up event after every key-down, while Unix terminals
+/// usually report only key-down. A release must not be handled as a second
+/// press; key repeat (holding a key) stays actionable.
+fn is_actionable_key(key: &KeyEvent) -> bool {
+    key.kind != KeyEventKind::Release
+}
+
 fn handle_key(app: &mut TuiApp, key: KeyEvent, state: &ServerState) -> bool {
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => return true,
@@ -1559,6 +1573,18 @@ mod tests {
 
         assert!(app.settings.aec_enabled);
         assert!(!app.aec_runtime_available);
+    }
+
+    #[test]
+    fn key_release_events_are_not_actionable() {
+        let mut key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        assert!(is_actionable_key(&key));
+
+        key.kind = KeyEventKind::Repeat;
+        assert!(is_actionable_key(&key));
+
+        key.kind = KeyEventKind::Release;
+        assert!(!is_actionable_key(&key));
     }
 
     #[test]
