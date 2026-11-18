@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": [
+      "resources/*",
+      "resources/steam-audio/*",
+      "resources/steam-audio/x64/*"
+    ]
+  }
+}

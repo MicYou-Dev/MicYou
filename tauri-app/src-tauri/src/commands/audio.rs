@@ -15,12 +15,12 @@
 
 use micyou_core::config::{self, ServerPrefs};
 use micyou_core::micyou_audio::dsp::AudioDspSettings;
-use micyou_core::platform::{blackhole, vbcable};
+use micyou_core::platform::{blackhole, steam_audio, vbcable};
 use micyou_core::server::ServerState;
 use micyou_core::settings::PipeWireStatus;
 #[cfg(feature = "vbcable")]
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 // Device enumeration can take seconds on Windows (Bluetooth endpoints), so it
 // runs off the main thread, where sync commands would freeze the UI.
@@ -93,6 +93,26 @@ pub fn install_vbcable(_app: AppHandle) -> Result<vbcable::VBCableResult, String
         error_type: Some("feature_disabled".to_string()),
         message: Some("VB-Cable installation feature not enabled".to_string()),
     })
+}
+
+#[tauri::command]
+pub async fn check_steam_audio() -> Result<bool, String> {
+    super::blocking(|| Ok(steam_audio::is_installed())).await
+}
+
+/// Install Valve's Steam Streaming audio driver (bundled with MicYou). The
+/// driver backs both the "Steam Streaming Microphone" recording endpoint and
+/// the "Steam Streaming Speakers" playback endpoint MicYou renders into.
+#[tauri::command]
+pub async fn install_steam_audio(
+    app: AppHandle,
+) -> Result<steam_audio::VirtualAudioResult, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    Ok(steam_audio::install(
+        resource_dir.as_deref(),
+        std::sync::Arc::new(crate::events::TauriEventSink(app)),
+    )
+    .await)
 }
 
 #[tauri::command]

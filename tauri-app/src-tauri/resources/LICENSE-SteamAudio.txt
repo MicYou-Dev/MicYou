@@ -1,0 +1,24 @@
+Proprietary - Valve Corporation (Steam Streaming audio driver)
+
+The files under `tauri-app/src-tauri/resources/steam-audio/x64/` are Valve
+Corporation's Steam Streaming audio driver package:
+
+- `SteamStreamingMicrophone.{inf,sys,cat}`
+- `SteamStreamingSpeakers.{inf,sys,cat}`
+
+They are installed with `pnputil /add-driver <inf> /install` so MicYou can
+expose Valve's virtual microphone on Windows without asking the user to install
+VB-CABLE. Valve does not publish an official standalone download; the copy here
+is mirrored from the Steam Link audio driver package that ships with Steam.
+
+Provenance and SHA-256 checksums are documented in
+`resources/steam-audio/README.md`. The `.cat` files carry Valve's WHQL
+signature; keep each `.cat` next to its matching `.inf`/`.sys`.
+
+Valve has not granted MicYou a separate redistribution license for these
+binaries. They are bundled because the related MicYou issue explicitly requests
+installing Steam's virtual microphone as the default Windows path. If the
+project cannot rely on that redistribution, the installer falls back to the
+Steam installation's own driver directory (`%CommonProgramFiles(x86)%\Steam\
+drivers\Windows10\x64`) or the user can install VB-CABLE as a compatible
+fallback. This notice is not a grant of rights from Valve.

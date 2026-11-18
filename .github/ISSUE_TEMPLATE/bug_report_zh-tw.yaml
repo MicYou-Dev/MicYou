@@ -176,8 +176,8 @@ body:
     id: additional_env
     attributes:
       label: 其他環境細節
-      description: 請補充其他可能影響問題的環境資訊，例如 PC 是否安裝了 VB-Cable，使用的音訊輸入裝置等。
-      placeholder: 例如：已安裝 VB-Cable，並將 MicYou 設為預設輸入裝置。
+      description: 請補充其他可能影響問題的環境資訊，例如 PC 是否安裝了 Steam Streaming Microphone，使用的音訊輸入裝置等。
+      placeholder: 例如：已安裝 Steam Streaming Microphone，並將 MicYou 設為預設輸入裝置。
 
   - type: textarea
     id: logs

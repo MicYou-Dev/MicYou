@@ -23,6 +23,7 @@ import type {
   UpdateCheckResult,
   UsbModeResult,
   VBCableResult,
+  VirtualAudioResult,
 } from './types';
 
 type NoArgs = Record<string, never>;
@@ -54,6 +55,8 @@ export interface Commands {
   check_pipewire: { args: NoArgs; result: PipeWireStatus };
   check_vbcable: { args: NoArgs; result: boolean };
   install_vbcable: { args: NoArgs; result: VBCableResult };
+  check_steam_audio: { args: NoArgs; result: boolean };
+  install_steam_audio: { args: NoArgs; result: VirtualAudioResult };
   check_blackhole: { args: NoArgs; result: BlackHoleStatus };
   set_blackhole_as_input: { args: NoArgs; result: BlackHoleResult };
   restore_input_device: { args: NoArgs; result: BlackHoleResult };

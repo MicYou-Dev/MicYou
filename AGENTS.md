@@ -2,7 +2,7 @@
 
 ## Overview
 
-MicYou turns an Android phone into a PC microphone: the phone captures and streams audio, the desktop receives it and plays it into a virtual mic (VB-CABLE on Windows, BlackHole on macOS, PipeWire on Linux) or serves it to a browser over HTTPS
+MicYou turns an Android phone into a PC microphone: the phone captures and streams audio, the desktop receives it and plays it into a virtual mic (Steam Streaming Microphone on Windows, BlackHole on macOS, PipeWire on Linux) or serves it to a browser over HTTPS
 
 Two codebases share one wire protocol:
 
@@ -55,7 +55,7 @@ Workspace crates under `tauri-app/crates/`:
 |---|---|
 | `micyou-protocol` | prost wire format and magic constants |
 | `micyou-infer` | zero-dependency pure-Rust VM for the statically compiled MCYI model blobs (PureVox6 / AEC7); replaces ort/ONNX Runtime, see `docs/pure-rust-inference.md` |
-| `micyou-core` | everything server-side, no Tauri dependency: `server/` (state, lifecycle, service, audio pipeline, output), `transport/` (tcp, udp, web, jitter buffer, opus, session, net_bind), `plugins/`, `platform/` (adb, pipewire, vbcable, blackhole, accent, firewall, terminal), `config`, `settings`, `events`, `host`, `modes`, `mode_lock` |
+| `micyou-core` | everything server-side, no Tauri dependency: `server/` (state, lifecycle, service, audio pipeline, output), `transport/` (tcp, udp, web, jitter buffer, opus, session, net_bind), `plugins/`, `platform/` (adb, pipewire, steam_audio, vbcable, blackhole, accent, firewall, terminal), `config`, `settings`, `events`, `host`, `modes`, `mode_lock` |
 | `micyou-audio` | cpal output engine, DSP chain (native PureVox6/AEC7 models embedded via `micyou-infer`, RNNoise noise suppression), loopback capture |
 | `micyou-plugin` | plugin runtime: manifest, WASM sandbox (wasmi with fuel limits), native C ABI (libloading), bus, DSP hook |
 | `micyou-cli`, `micyou-tui` | headless frontends on `micyou-core`, no Tauri in their dependency tree; bundled into the GUI as Tauri sidecars (`externalBin`) by `prepare-sidecars.js` |
@@ -70,6 +70,7 @@ Data path:
 - The AEC far-end reference is captured per platform inside `micyou-audio` only: WASAPI render loopback on Windows, the PipeWire sink monitor on Linux, and on macOS a Core Audio process tap (`macos_tap.rs`, `AudioHardwareCreateProcessTap`, 14.2+) that falls back to the BlackHole cpal capture on older systems. `aec.rs` owns the failure codes and `aec_reference_availability()`, the single answer the GUI, CLI and TUI all read; keep platform policy out of `micyou-core`
 - `macos_tap.rs` resolves Core Audio with `dlopen`/`dlsym` so the binary still loads where the symbol is absent, and needs `NSAudioCaptureUsageDescription` in `Info.plist` - without it macOS returns silence instead of failing. It re-reads the tap rate while running, so switching the output device cannot leave a stale resampling ratio
 - Plugin DSP nodes that fail 50 frames in a row are quarantined; non-finite plugin output is zeroed
+- Windows virtual microphone: the installer stages Valve's Steam Streaming Microphone/Speakers packages and then runs `src-tauri/resources/steam-audio/configure.ps1`, which sets the Microphone render endpoint to mono 48 kHz and the capture endpoint gain to 0 dB (the driver defaults to 8 channels and +30 dB, which make the loopback alias and clip); `settings::audio_devices` hides the playback-only sibling and shows the endpoint as "Steam Streaming Microphone"
 - The GUI runs one plugin update check in a background thread two seconds after startup; `PluginHost::cached_updates` stores the result and `get_cached_plugin_updates` feeds the plugin page, so startup never waits on the network
 
 Frontend integration:

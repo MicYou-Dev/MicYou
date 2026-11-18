@@ -5,18 +5,18 @@ import { isLinux, isMacOS } from '@/shared/lib/os';
 import { supportedDistros, useOutputDevices } from '../composables/useOutputDevices';
 
 // The platform's virtual microphone: BlackHole on macOS, PipeWire on Linux,
-// VB-CABLE on Windows.
+// Valve's Steam Streaming Microphone on Windows.
 const {
-  hasVBCable,
+  hasVirtualAudio,
   hasBlackHole,
   blackholeStatus,
   pipewireStatus,
   selectedDistro,
   currentPipewireInstallCommand,
-  vbcableInstalling,
-  vbcableInstallProgress,
-  installVBCable,
-  openVBCableDownload,
+  virtualAudioInstalling,
+  virtualAudioInstallProgress,
+  installVirtualAudio,
+  openSteamAudioDownload,
   openBlackHoleDownload,
 } = useOutputDevices();
 
@@ -130,28 +130,28 @@ async function copyPipewireCommand() {
       <h4 class="font-bold text-on-surface text-lg">{{ $t('settings.vbcable.title') }}</h4>
       <span
         class="text-xs font-medium px-2 py-1 rounded-md"
-        :class="hasVBCable ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
+        :class="hasVirtualAudio ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
       >
-        {{ hasVBCable ? $t('settings.vbcable.installed') : $t('settings.vbcable.notDetected') }}
+        {{ hasVirtualAudio ? $t('settings.vbcable.installed') : $t('settings.vbcable.notDetected') }}
       </span>
     </div>
     <p class="text-xs text-on-surface-variant">{{ $t('settings.vbcable.desc') }}</p>
-    <div v-if="!hasVBCable" class="space-y-2">
+    <div v-if="!hasVirtualAudio" class="space-y-2">
       <button
-        @click="installVBCable"
-        :disabled="vbcableInstalling"
+        @click="installVirtualAudio"
+        :disabled="virtualAudioInstalling"
         class="w-full py-2 bg-primary disabled:opacity-50 rounded-xl text-sm font-bold text-on-primary flex items-center justify-center gap-2 transition-colors"
       >
-        <Loader2 v-if="vbcableInstalling" class="w-4 h-4 animate-spin" />
+        <Loader2 v-if="virtualAudioInstalling" class="w-4 h-4 animate-spin" />
         <Download v-else class="w-4 h-4" />
         {{
-          vbcableInstalling
-            ? vbcableInstallProgress || $t('vbcableInstall.installing')
+          virtualAudioInstalling
+            ? virtualAudioInstallProgress || $t('vbcableInstall.installing')
             : $t('vbcableDetect.autoInstall')
         }}
       </button>
       <button
-        @click="openVBCableDownload"
+        @click="openSteamAudioDownload"
         class="w-full py-2 bg-surface-variant hover:bg-surface-variant/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors"
       >
         <Download class="w-4 h-4" /> {{ $t('settings.vbcable.download') }}

@@ -176,8 +176,8 @@ body:
     id: additional_env
     attributes:
       label: Additional Environment Details
-      description: Please provide any other environment information that might affect the issue, such as whether VB-Cable is installed on PC, the audio input device used, etc.
-      placeholder: e.g., VB-Cable installed and MicYou set as default input device.
+      description: Please provide any other environment information that might affect the issue, such as whether Steam Streaming Microphone is installed on PC, the audio input device used, etc.
+      placeholder: e.g., Steam Streaming Microphone installed and MicYou set as default input device.
 
   - type: textarea
     id: logs

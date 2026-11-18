@@ -170,11 +170,11 @@
       "glass": "磨砂玻璃效果"
     },
     "vbcable": {
-      "title": "VB-Cable 驅動程式",
+      "title": "Steam Streaming Microphone",
       "installed": "已安裝",
       "notDetected": "未安裝",
-      "desc": "要將咪高峰聲音傳去其他應用程式（好似 OBS 或者 Discord），你需要裝 VB-Audio Virtual Cable",
-      "download": "下載 VB-Cable"
+      "desc": "MicYou 會將咪高峰聲音寫入 Steam Streaming Microphone 嘅播放端點，其他應用程式揀同名 Steam Streaming Microphone 做輸入裝置就得。驅動會跟住 MicYou 安裝程式一齊裝，唔使再另外下載 VB-CABLE。",
+      "download": "打開驅動來源"
     },
     "blackhole": {
       "installed": "已安裝",
@@ -196,9 +196,9 @@
       "auto": "自動",
       "routingActive": "虛擬音訊傳輸已啟用，音訊會傳去虛擬裝置",
       "physicalWarningTitle": "目前揀咗實體播放裝置",
-      "physicalWarningDesc": "手機咪高峰嘅聲音會直接喺喇叭播放，如果手機同喇叭喺同一個環境，好易產生嚴重回音或嘯叫，建議安裝並揀選虛擬音訊裝置（例如 VB-Cable）",
+      "physicalWarningDesc": "手機咪高峰嘅聲音會直接喺喇叭播放，如果手機同喇叭喺同一個環境，好易產生嚴重回音或嘯叫，建議安裝並揀選虛擬音訊裝置（例如 Steam Streaming Microphone）",
       "noVirtualDeviceTitle": "未偵測到虛擬音訊裝置",
-      "noVirtualDeviceDesc": "目前自動回落到系統預設喇叭播放，如果同手機喺同一個環境可能產生回音，建議安裝並設定虛擬音訊驅動（例如 VB-Cable）"
+      "noVirtualDeviceDesc": "目前自動回落到系統預設喇叭播放，如果同手機喺同一個環境可能產生回音，建議安裝 Steam Streaming Microphone 並設為輸出裝置"
     },
     "spectrum": {
       "title": "即時頻譜",
@@ -586,7 +586,7 @@
     "step3Title": "3. 開始傳輸",
     "step3Desc": "㩒開始掣開始音訊傳輸",
     "step4Title": "4. 配置音訊",
-    "step4Desc": "喺錄音軟件揀 VB-Cable 做輸入裝置",
+    "step4Desc": "喺錄音軟件揀 Steam Streaming Microphone 做輸入裝置",
     "videoGuide": "影片教學",
     "textGuide": "文字教學",
     "gotIt": "我很清楚點樣使用",
@@ -597,18 +597,18 @@
     "startUsing": "開始使用"
   },
   "vbcableDetect": {
-    "title": "需要 VB-Cable 驅動",
-    "message": "VB-Cable 驅動係 MicYou 喺 Windows 上面做虛擬咪高峰需要嘅，你想自動安裝嗎？",
+    "title": "需要虛擬咪高峰驅動",
+    "message": "MicYou 喺 Windows 上面用 Valve 嘅 Steam Streaming Microphone 做虛擬咪高峰。驅動會跟住 MicYou 一齊裝，要唔要而家自動安裝？",
     "autoInstall": "自動安裝",
     "manualDownload": "手動下載",
     "skipForNow": "暫時跳過",
-    "installed": "VB-Cable 已經裝咗"
+    "installed": "Steam Streaming Microphone 已經裝咗"
   },
   "vbcableInstall": {
     "installing": "安裝緊...",
-    "downloading": "下載緊安裝程式...",
+    "downloading": "準備緊驅動...",
     "configuring": "配置緊裝置...",
-    "waitingDevice": "等緊裝置初始化...",
+    "waitingDevice": "等緊音訊裝置就緒...",
     "complete": "安裝完成",
     "failed": "安裝失敗",
     "adminRequired": "需要管理員權限，批准吓 UAC 提示",

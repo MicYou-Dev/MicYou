@@ -15,15 +15,14 @@ defineProps<{
 }>();
 
 const step = ref(1);
-const vbcableInstalled = ref(false);
+const virtualAudioInstalled = ref(false);
 const installing = ref(false);
 const installProgress = ref('');
 const installError = ref('');
-const installSuccess = ref(false);
 
 const track = useListeners();
 
-const TOTAL_STEPS_WINDOWS = 4;
+const TOTAL_STEPS_WINDOWS = 3;
 const TOTAL_STEPS_OTHER = 2;
 
 const totalSteps = isWindows ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
@@ -31,29 +30,23 @@ const totalSteps = isWindows ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
 onMounted(async () => {
   if (isWindows) {
     try {
-      vbcableInstalled.value = await command('check_vbcable');
-      if (vbcableInstalled.value) {
-        step.value = 4;
+      virtualAudioInstalled.value = await command('check_steam_audio');
+      if (virtualAudioInstalled.value) {
+        step.value = 3;
       }
     } catch (e) {
-      console.error('Failed to check VB-CABLE:', e);
+      console.error('Failed to check Steam Streaming Microphone:', e);
     }
   }
 
-  await track(onEvent('vbcable-install-progress', (payload) => {
+  await track(onEvent('virtual-audio-install-progress', (payload) => {
     installProgress.value = payload;
   }));
 });
 
-function nextStep() {
-  if (step.value < totalSteps) {
-    step.value++;
-  }
-}
-
 function skip() {
   if (isWindows && step.value === 1) {
-    step.value = 4;
+    step.value = 3;
   } else {
     complete();
   }
@@ -64,17 +57,16 @@ function complete() {
   emit('complete');
 }
 
-async function installVBCable() {
+async function installVirtualAudio() {
   installing.value = true;
   installError.value = '';
   installProgress.value = '';
 
   try {
-    const result = await command('install_vbcable');
+    const result = await command('install_steam_audio');
 
     if (result.success) {
-      installSuccess.value = true;
-      vbcableInstalled.value = true;
+      virtualAudioInstalled.value = true;
     } else {
       installError.value = result.error_type || 'unknown';
     }
@@ -87,7 +79,7 @@ async function installVBCable() {
 }
 
 async function openManualDownload() {
-  await openUrl('https://vb-audio.com/Cable/');
+  await openUrl('https://github.com/MicYou-Dev/MicYou/releases/latest');
 }
 
 async function openVideoGuide() {
@@ -146,11 +138,11 @@ async function openTextGuide() {
         </div>
       </div>
 
-      <!-- Step 2: VB-CABLE Detection (Windows only) -->
+      <!-- Step 2: Steam Streaming Microphone detection (Windows only) -->
       <div v-else-if="step === 2" class="p-6 space-y-5">
         <h2 class="text-xl font-bold text-on-surface">{{ t('vbcableDetect.title') }}</h2>
 
-        <div v-if="vbcableInstalled" class="flex items-center gap-3 bg-green-500/10 rounded-xl p-4">
+        <div v-if="virtualAudioInstalled" class="flex items-center gap-3 bg-green-500/10 rounded-xl p-4">
           <CheckCircle2 class="w-6 h-6 text-green-400 shrink-0" />
           <p class="text-sm text-green-400">{{ t('vbcableDetect.installed') }}</p>
         </div>
@@ -166,7 +158,7 @@ async function openTextGuide() {
 
           <div class="space-y-2">
             <button
-              @click="installVBCable"
+              @click="installVirtualAudio"
               :disabled="installing"
               class="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl text-sm font-bold text-on-primary flex items-center justify-center gap-2 transition-colors"
             >
@@ -192,30 +184,17 @@ async function openTextGuide() {
         </template>
       </div>
 
-      <!-- Step 3: Installation Progress (Windows only) -->
+      <!-- Step 2 is the install state; step 3 is the completion page. -->
+
+      <!-- Step 3: Complete -->
       <div v-else-if="step === 3" class="p-6 space-y-5">
-        <h2 class="text-xl font-bold text-on-surface">{{ t('vbcableInstall.installing') }}</h2>
-
-        <div class="space-y-3">
-          <div class="flex items-center gap-3">
-            <Loader2 class="w-5 h-5 text-primary animate-spin" />
-            <p class="text-sm text-on-surface-variant">{{ installProgress || t('vbcableInstall.waitingDevice') }}</p>
-          </div>
-          <div class="w-full bg-surface-variant rounded-full h-2 overflow-hidden">
-            <div class="h-full bg-primary rounded-full animate-pulse" style="width: 100%"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 4: Complete -->
-      <div v-else-if="step === 4" class="p-6 space-y-5">
         <div class="flex items-center gap-3">
           <CheckCircle2 class="w-8 h-8 text-green-400" />
           <h2 class="text-xl font-bold text-on-surface">{{ t('onboarding.complete') }}</h2>
         </div>
         <p class="text-sm text-on-surface-variant">{{ t('onboarding.completeDesc') }}</p>
 
-        <div v-if="isWindows && vbcableInstalled" class="bg-green-500/10 rounded-xl p-3">
+        <div v-if="isWindows && virtualAudioInstalled" class="bg-green-500/10 rounded-xl p-3">
           <p class="text-sm text-green-400">{{ t('vbcableDetect.installed') }}</p>
         </div>
       </div>
@@ -233,14 +212,14 @@ async function openTextGuide() {
 
         <div class="flex items-center gap-2">
           <button
-            v-if="step === 2 && vbcableInstalled"
-            @click="nextStep"
+            v-if="step === 2 && virtualAudioInstalled"
+            @click="step = 3"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary flex items-center gap-1 transition-colors"
           >
             {{ t('onboarding.next') }} <ArrowRight class="w-4 h-4" />
           </button>
           <button
-            v-if="step === 4"
+            v-if="step === 3"
             @click="complete"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary transition-colors"
           >

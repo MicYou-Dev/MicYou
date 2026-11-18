@@ -65,7 +65,7 @@ impl ServerEvents for TauriEventSink {
         self.emit("web-client-count", count);
     }
     fn install_progress(&self, message: String) {
-        self.emit("vbcable-install-progress", message);
+        self.emit("virtual-audio-install-progress", message);
     }
     fn aec_status_changed(&self, status: AecStatus) {
         self.emit("aec-status-changed", status);

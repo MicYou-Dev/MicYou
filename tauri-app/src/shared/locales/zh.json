@@ -172,11 +172,11 @@
       "glass": "毛玻璃拟态"
     },
     "vbcable": {
-      "title": "VB-Cable 音频转发",
+      "title": "Steam Streaming Microphone",
       "installed": "已安装",
       "notDetected": "未检测到",
-      "desc": "若要将麦克风声音路由到其他应用程序（如 OBS 或 Discord），你需要安装 VB-Audio Virtual Cable",
-      "download": "下载 VB-Cable"
+      "desc": "MicYou 将麦克风音频写入 Steam Streaming Microphone 的播放端点，其他应用选择同名 Steam Streaming Microphone 作为输入设备即可。驱动随 MicYou 安装包一起安装，不再需要单独下载 VB-CABLE。",
+      "download": "打开驱动来源"
     },
     "blackhole": {
       "installed": "已安装",
@@ -198,9 +198,9 @@
       "auto": "自动",
       "routingActive": "虚拟音频路由已激活，音频将被转发到虚拟设备",
       "physicalWarningTitle": "当前选择的是物理播放设备",
-      "physicalWarningDesc": "手机麦克风的声音将直接从音响/扬声器播放，若手机与扬声器处于同一环境，极易产生严重回声或啸叫，建议安装并选择虚拟音频设备（如 VB-Cable）",
+      "physicalWarningDesc": "手机麦克风的声音将直接从音响/扬声器播放，若手机与扬声器处于同一环境，极易产生严重回声或啸叫，建议安装并选择虚拟音频设备（如 Steam Streaming Microphone）",
       "noVirtualDeviceTitle": "未检测到虚拟音频设备",
-      "noVirtualDeviceDesc": "当前自动回落到系统默认扬声器播放，若与手机处于同一环境可能产生回声，建议安装并配置虚拟音频驱动（如 VB-Cable）"
+      "noVirtualDeviceDesc": "当前自动回落到系统默认扬声器播放，若与手机处于同一环境可能产生回声，建议安装 Steam Streaming Microphone 并将其设为输出设备"
     },
     "spectrum": {
       "title": "实时频谱",
@@ -588,7 +588,7 @@
     "step3Title": "3. 开始传输",
     "step3Desc": "点击开始按钮启动音频传输",
     "step4Title": "4. 配置音频",
-    "step4Desc": "在录音软件中选择 VB-Cable 作为输入设备",
+    "step4Desc": "在录音软件中选择 Steam Streaming Microphone 作为输入设备",
     "videoGuide": "视频教程",
     "textGuide": "文字教程",
     "gotIt": "我很清楚怎么使用",
@@ -599,18 +599,18 @@
     "startUsing": "开始使用"
   },
   "vbcableDetect": {
-    "title": "需要 VB-Cable 驱动",
-    "message": "VB-Cable 驱动是 MicYou 在 Windows 上作为虚拟麦克风工作所必需的，您想自动安装吗？",
+    "title": "需要虚拟麦克风驱动",
+    "message": "MicYou 在 Windows 上使用 Valve 的 Steam Streaming Microphone 作为虚拟麦克风。驱动随 MicYou 一起安装，是否现在自动安装？",
     "autoInstall": "自动安装",
     "manualDownload": "手动下载",
     "skipForNow": "暂时跳过",
-    "installed": "VB-Cable 已安装"
+    "installed": "Steam Streaming Microphone 已安装"
   },
   "vbcableInstall": {
     "installing": "正在安装...",
-    "downloading": "正在下载安装程序...",
+    "downloading": "正在准备驱动...",
     "configuring": "正在配置设备...",
-    "waitingDevice": "等待设备初始化...",
+    "waitingDevice": "等待音频设备就绪...",
     "complete": "安装完成",
     "failed": "安装失败",
     "adminRequired": "需要管理员权限，请批准 UAC 提示",

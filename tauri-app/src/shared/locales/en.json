@@ -172,11 +172,11 @@
       "glass": "Glassmorphism"
     },
     "vbcable": {
-      "title": "VB-Cable Forwarding",
+      "title": "Steam Streaming Microphone",
       "installed": "Installed",
       "notDetected": "Not Detected",
-      "desc": "To route audio to other applications (like OBS or Discord), you need to install VB-Audio Virtual Cable.",
-      "download": "Download VB-Cable"
+      "desc": "MicYou renders the microphone audio into the Steam Streaming Microphone playback endpoint, so applications can select Steam Streaming Microphone as their input device. The driver is bundled with MicYou and installed during setup, replacing the separate VB-CABLE download.",
+      "download": "Open Driver Source"
     },
     "blackhole": {
       "installed": "Installed",
@@ -198,9 +198,9 @@
       "auto": "Auto",
       "routingActive": "Virtual audio routing is active. Audio will be forwarded to the virtual device.",
       "physicalWarningTitle": "Physical playback device selected",
-      "physicalWarningDesc": "Microphone audio will be played directly through speakers. If your phone and speakers share the same environment, this may cause severe acoustic feedback or howling. Using a virtual audio device (such as VB-Cable) is strongly recommended.",
+      "physicalWarningDesc": "Microphone audio will be played directly through speakers. If your phone and speakers share the same environment, this may cause severe acoustic feedback or howling. Using Steam Streaming Microphone (or another virtual audio device) is strongly recommended.",
       "noVirtualDeviceTitle": "No virtual audio device detected",
-      "noVirtualDeviceDesc": "Automatically falling back to the default speaker. If your phone and speakers are in the same environment, echo may occur. Installing and configuring a virtual audio device (e.g. VB-Cable) is recommended."
+      "noVirtualDeviceDesc": "Automatically falling back to the default speaker. If your phone and speakers are in the same environment, echo may occur. Install Steam Streaming Microphone and select it as the output device to avoid this."
     },
     "spectrum": {
       "title": "Real-Time Spectrum",
@@ -588,7 +588,7 @@
     "step3Title": "3. Start Streaming",
     "step3Desc": "Click Start button to begin audio streaming",
     "step4Title": "4. Configure Audio",
-    "step4Desc": "Select VB-Cable as input device in your recording software",
+    "step4Desc": "Select Steam Streaming Microphone as the input device in your recording software",
     "videoGuide": "Video Tutorial",
     "textGuide": "Text Guide",
     "gotIt": "I know how to use it",
@@ -599,18 +599,18 @@
     "startUsing": "Start Using"
   },
   "vbcableDetect": {
-    "title": "VB-Cable Driver Required",
-    "message": "VB-Cable driver is required for MicYou to function as a virtual microphone on Windows. Would you like to install it automatically?",
+    "title": "Virtual Microphone Driver Required",
+    "message": "MicYou uses Valve's Steam Streaming Microphone as its virtual microphone on Windows. The driver ships with MicYou; install it automatically?",
     "autoInstall": "Install Automatically",
     "manualDownload": "Manual Download",
     "skipForNow": "Skip for Now",
-    "installed": "VB-Cable is installed"
+    "installed": "Steam Streaming Microphone is installed"
   },
   "vbcableInstall": {
     "installing": "Installing...",
-    "downloading": "Downloading installer...",
+    "downloading": "Preparing driver...",
     "configuring": "Configuring devices...",
-    "waitingDevice": "Waiting for device initialization...",
+    "waitingDevice": "Waiting for the audio device...",
     "complete": "Installation complete",
     "failed": "Installation failed",
     "adminRequired": "Administrator privileges required. Please approve the UAC prompt.",

@@ -170,11 +170,11 @@
       "glass": "毛玻璃喵~ (´・ω・`)"
     },
     "vbcable": {
-      "title": "VB-Cable 转发喵~",
+      "title": "Steam Streaming Microphone 转发喵~",
       "installed": "已安装喵~",
       "notDetected": "未检测到喵~",
-      "desc": "要把音频路由到其他应用（如 OBS 或 Discord）喵~需要安装 VB-Audio Virtual Cable 喵~",
-      "download": "下载 VB-Cable 喵~"
+      "desc": "要把音频路由到其他应用（如 OBS 或 Discord）喵~MicYou 会写入 Steam Streaming Microphone 的播放端点，其他应用拣同名 Steam Streaming Microphone 做输入就啱喵~驱动跟住安装包一齐装，唔使再下载 VB-CABLE 喵~",
+      "download": "打开驱动来源喵~"
     },
     "blackhole": {
       "installed": "已安装喵~",
@@ -196,9 +196,9 @@
       "auto": "自动喵~",
       "routingActive": "虚拟音频路由已激活喵~音频将被转发到虚拟设备喵~",
       "physicalWarningTitle": "当前选的是物理大喇叭喵！",
-      "physicalWarningDesc": "手机喵呜的声音会直接从大喇叭里跑出来，容易吵得猫猫耳朵痛并产生回声喵！推荐安装虚拟设备（比如 VB-Cable）喵~",
+      "physicalWarningDesc": "手机喵呜的声音会直接从大喇叭里跑出来，容易吵得猫猫耳朵痛并产生回声喵！推荐安装虚拟设备（比如 Steam Streaming Microphone）喵~",
       "noVirtualDeviceTitle": "没闻到虚拟音频设备的味道喵",
-      "noVirtualDeviceDesc": "现在掉回到系统默认大喇叭播放了喵，如果和手机靠太近会产生回声喵，快装一个 VB-Cable 喵~"
+      "noVirtualDeviceDesc": "现在掉回到系统默认大喇叭播放了喵，如果和手机靠太近会产生回声喵，快装一个 Steam Streaming Microphone 喵~"
     },
     "spectrum": {
       "title": "实时频谱喵~ 📈",
@@ -586,7 +586,7 @@
     "step3Title": "3. 开始传输喵~",
     "step3Desc": "点击开始按钮启动音频传输喵~",
     "step4Title": "4. 配置音频喵~",
-    "step4Desc": "在录音软件中选择 VB-Cable 作为输入设备喵~",
+    "step4Desc": "在录音软件中选择 Steam Streaming Microphone 作为输入设备喵~",
     "videoGuide": "视频教程喵~",
     "textGuide": "文字教程喵~",
     "gotIt": "猫猫知道怎么使用喵~",
@@ -597,18 +597,18 @@
     "startUsing": "开始使用喵~ (๑•̀ㅂ•́)و✧"
   },
   "vbcableDetect": {
-    "title": "笨蛋喵~ 喵喵酱忘记装 VB-Cable 啦! (・_・;)",
-    "message": "在 Windows 上 MicYou 需要安装 VB-Cable 驱动作为虚拟麦克风才能正常工作喵~需要 MicYou 帮喵喵酱自动安装喵? (・_・)",
+    "title": "需要虚拟麦克风驱动喵~",
+    "message": "Windows 上 MicYou 用 Valve 嘅 Steam Streaming Microphone 做虚拟麦克风喵~驱动会跟住 MicYou 一齐装，要唔要而家自动安装喵？",
     "autoInstall": "好的喵~",
     "manualDownload": "手动下载喵~",
     "skipForNow": "先跳过喵~",
-    "installed": "VB-Cable 已安装喵~"
+    "installed": "Steam Streaming Microphone 已安装喵~"
   },
   "vbcableInstall": {
     "installing": "安装中喵... (・_・)",
-    "downloading": "正在下载安装包喵...",
+    "downloading": "准备紧驱动喵...",
     "configuring": "正在配置设备喵...",
-    "waitingDevice": "等待设备初始化喵...",
+    "waitingDevice": "等紧音频设备喵...",
     "complete": "安装完成喵~ ✓",
     "failed": "安装失败喵... (ToT)",
     "adminRequired": "需要管理员权限喵~请批准 UAC 提示喵~",

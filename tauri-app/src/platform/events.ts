@@ -16,7 +16,7 @@ export interface AppEvents {
   'monitoring-enabled-changed': boolean;
   'web-client-count': number;
   udp_audio_warning: unknown;
-  'vbcable-install-progress': string;
+  'virtual-audio-install-progress': string;
   'plugin-download-progress': PluginDownloadProgress;
   'tray-action': string;
   /** macOS: the native close button, forwarded so it keeps the hide/confirm flow. */

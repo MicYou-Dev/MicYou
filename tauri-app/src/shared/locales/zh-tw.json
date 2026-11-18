@@ -170,11 +170,11 @@
       "glass": "毛玻璃擬態"
     },
     "vbcable": {
-      "title": "VB-Cable 音訊轉發",
+      "title": "Steam Streaming Microphone",
       "installed": "已安裝",
       "notDetected": "未偵測到",
-      "desc": "若要將麥克風聲音路由到其他應用程式（如 OBS 或 Discord），您需要安裝 VB-Audio Virtual Cable",
-      "download": "下載 VB-Cable"
+      "desc": "MicYou 會將麥克風音訊寫入 Steam Streaming Microphone 的播放端點，其他應用程式選擇同名 Steam Streaming Microphone 作為輸入裝置即可。驅動程式隨 MicYou 安裝程式一併安裝，不再需要另外下載 VB-CABLE。",
+      "download": "開啟驅動程式來源"
     },
     "blackhole": {
       "installed": "已安裝",
@@ -196,9 +196,9 @@
       "auto": "自動",
       "routingActive": "虛擬音訊路由已啟用，音訊將被轉發到虛擬裝置",
       "physicalWarningTitle": "目前選擇的是實體播放裝置",
-      "physicalWarningDesc": "手機麥克風的聲音將直接從喇叭/揚聲器播放，若手機與喇叭處於同一環境，極易產生嚴重回音或嘯叫，建議安裝並選擇虛擬音訊裝置（如 VB-Cable）",
+      "physicalWarningDesc": "手機麥克風的聲音將直接從喇叭/揚聲器播放，若手機與喇叭處於同一環境，極易產生嚴重回音或嘯叫，建議安裝並選擇虛擬音訊裝置（如 Steam Streaming Microphone）",
       "noVirtualDeviceTitle": "未偵測到虛擬音訊裝置",
-      "noVirtualDeviceDesc": "目前自動回落到系統預設喇叭播放，若與手機處於同一環境可能產生回音，建議安裝並設定虛擬音訊驅動程式（如 VB-Cable）"
+      "noVirtualDeviceDesc": "目前自動回落到系統預設喇叭播放，若與手機處於同一環境可能產生回音，建議安裝 Steam Streaming Microphone 並將其設為輸出裝置"
     },
     "spectrum": {
       "title": "即時頻譜",
@@ -586,7 +586,7 @@
     "step3Title": "3. 開始傳輸",
     "step3Desc": "點擊開始按鈕啟動音訊傳輸",
     "step4Title": "4. 設定音訊",
-    "step4Desc": "在錄音軟體中選擇 VB-Cable 作為輸入裝置",
+    "step4Desc": "在錄音軟體中選擇 Steam Streaming Microphone 作為輸入裝置",
     "videoGuide": "影片教學",
     "textGuide": "文字教學",
     "gotIt": "我很清楚怎麼使用",
@@ -597,18 +597,18 @@
     "startUsing": "開始使用"
   },
   "vbcableDetect": {
-    "title": "需要 VB-Cable 驅動程式",
-    "message": "VB-Cable 驅動程式是 MicYou 在 Windows 上作為虛擬麥克風運作所必需的，您想要自動安裝嗎？",
+    "title": "需要虛擬麥克風驅動程式",
+    "message": "MicYou 在 Windows 上使用 Valve 的 Steam Streaming Microphone 作為虛擬麥克風。驅動程式隨 MicYou 一併安裝，是否立即自動安裝？",
     "autoInstall": "自動安裝",
     "manualDownload": "手動下載",
     "skipForNow": "暫時跳過",
-    "installed": "VB-Cable 已安裝"
+    "installed": "Steam Streaming Microphone 已安裝"
   },
   "vbcableInstall": {
     "installing": "正在安裝...",
-    "downloading": "正在下載安裝程式...",
+    "downloading": "正在準備驅動程式...",
     "configuring": "正在設定裝置...",
-    "waitingDevice": "等待裝置初始化...",
+    "waitingDevice": "等待音訊裝置就緒...",
     "complete": "安裝完成",
     "failed": "安裝失敗",
     "adminRequired": "需要系統管理員權限，請核准 UAC 提示",

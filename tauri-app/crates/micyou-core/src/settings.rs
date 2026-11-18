@@ -41,6 +41,27 @@ pub fn audio_devices() -> Vec<String> {
             Vec::new()
         }
     };
+    // Valve's render endpoint is displayed as "<localized Speakers> (Steam
+    // Streaming Microphone)" and its playback-only sibling as "<...> (Steam
+    // Streaming Speakers)". Show one stable name for the virtual microphone and
+    // hide the sibling: MicYou must render into the Microphone endpoint for the
+    // pair's loopback to feed recording applications.
+    #[cfg(target_os = "windows")]
+    {
+        names = names
+            .into_iter()
+            .filter_map(|name| {
+                let lower = name.to_lowercase();
+                if lower.contains("steam streaming speakers") {
+                    None
+                } else if lower.contains("steam streaming microphone") {
+                    Some("Steam Streaming Microphone".to_string())
+                } else {
+                    Some(name)
+                }
+            })
+            .collect();
+    }
     names.sort();
     names.dedup();
     names
