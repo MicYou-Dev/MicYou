@@ -1,6 +1,7 @@
 import { onMounted, ref } from 'vue';
 import { appWindow, command, onEvent } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
+import { isMacOS } from '@/shared/lib/os';
 
 interface WindowAnimations {
   /** Plays the content exit animation before the window disappears. */
@@ -93,7 +94,15 @@ export function useWindow(animations?: WindowAnimations) {
 
   async function exitApp() {
     try {
-      await leave(() => command('exit_app'));
+      if (isMacOS) {
+        // Exiting must not wait for a Web Animation to finish. The main window
+        // may be hidden while the app stays in the menu bar, and WebKit can
+        // pause animations for hidden windows indefinitely. The native exit
+        // command performs server cleanup before terminating the process.
+        await command('exit_app');
+      } else {
+        await leave(() => command('exit_app'));
+      }
     } catch (e) {
       console.error('exit_app failed:', e);
     }
@@ -107,6 +116,12 @@ export function useWindow(animations?: WindowAnimations) {
     }
     if (remembered === 'exit') {
       void exitApp();
+      return;
+    }
+    // On macOS, closing the main window hides the app to the menu bar by
+    // default. Explicit saved choices, including "ask", remain respected.
+    if (remembered === null && isMacOS) {
+      void hideMainWindow();
       return;
     }
     showCloseConfirm.value = true;
