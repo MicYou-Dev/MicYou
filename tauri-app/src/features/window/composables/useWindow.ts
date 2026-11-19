@@ -95,10 +95,7 @@ export function useWindow(animations?: WindowAnimations) {
   async function exitApp() {
     try {
       if (isMacOS) {
-        // Exiting must not wait for a Web Animation to finish. The main window
-        // may be hidden while the app stays in the menu bar, and WebKit can
-        // pause animations for hidden windows indefinitely. The native exit
-        // command performs server cleanup before terminating the process.
+        // Don't wait for animations on a hidden macOS window.
         await command('exit_app');
       } else {
         await leave(() => command('exit_app'));
@@ -118,8 +115,7 @@ export function useWindow(animations?: WindowAnimations) {
       void exitApp();
       return;
     }
-    // On macOS, closing the main window hides the app to the menu bar by
-    // default. Explicit saved choices, including "ask", remain respected.
+    // On macOS, default close hides the window unless the user saved a choice.
     if (remembered === null && isMacOS) {
       void hideMainWindow();
       return;
@@ -150,6 +146,9 @@ export function useWindow(animations?: WindowAnimations) {
   // Both can fire for one click, which is harmless: the dialog is a ref and
   // hide/exit already collapse concurrent calls into one animation.
   onMounted(() => void track(onEvent('main-window-close-requested', requestClose)));
+
+  // Reuse the tray reveal flow when macOS reopens from the Dock.
+  onMounted(() => void track(onEvent('macos-dock-reopen', () => void reveal())));
 
   return {
     isHidden, showCloseConfirm,

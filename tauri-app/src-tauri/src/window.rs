@@ -304,8 +304,7 @@ pub fn hide_main_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Keep the menu-bar app alive without a Dock icon while its main window is
-/// hidden. Restore regular activation when the user reopens the window.
+/// Toggle Dock visibility with the main window.
 #[cfg(target_os = "macos")]
 fn set_macos_dock_mode(app: &AppHandle, window_visible: bool) -> Result<(), String> {
     let (policy, dock_visible) = if window_visible {

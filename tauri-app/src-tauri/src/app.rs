@@ -239,8 +239,9 @@ pub fn run() {
                     has_visible_windows: false,
                     ..
                 } => {
-                    if let Err(error) = window::show_main_window(app.clone()) {
-                        log::warn!(target: "window", "failed to show window after Dock reopen: {error}");
+                    // Let the frontend restore the window and its animation.
+                    if let Err(error) = app.emit("macos-dock-reopen", ()) {
+                        log::warn!(target: "window", "failed to notify frontend after Dock reopen: {error}");
                     }
                 }
                 tauri::RunEvent::Exit => {
