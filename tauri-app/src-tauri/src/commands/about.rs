@@ -24,6 +24,25 @@ pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// Consumes the marker written by the Inno Setup installer. The desktop app
+/// cannot edit WebView2's localStorage from the installer, so the installer
+/// asks the app to forget the "onboarding completed" flag on its next start.
+#[tauri::command]
+pub fn take_onboarding_reset() -> bool {
+    let marker = micyou_core::config::config_dir().join("onboarding-reset");
+    match std::fs::remove_file(&marker) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            log::warn!(
+                "removing the onboarding reset marker {} failed: {error}",
+                marker.display()
+            );
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn check_app_update(cdk: Option<String>) -> Result<UpdateCheckResult, String> {
     micyou_core::about::check_app_update(cdk).await

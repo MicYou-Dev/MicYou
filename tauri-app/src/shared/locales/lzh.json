@@ -594,7 +594,8 @@
     "skip": "略",
     "complete": "设成",
     "completeDesc": "诸事已备，可始用矣。",
-    "startUsing": "始用"
+    "startUsing": "始用",
+    "cliTuiHint": "CLI/TUI：安装之器亦含 micyou-cli 与 micyou-tui，可于 设置 → 运行模式 易之，宜无界面或终端之用。"
   },
   "vbcableDetect": {
     "title": "需虚拟麦克风驱动",

@@ -594,7 +594,8 @@
     "skip": "跳過",
     "complete": "設定完成",
     "completeDesc": "搞掂晒！你而家可以開始用 MicYou 喇！",
-    "startUsing": "開始使用"
+    "startUsing": "開始使用",
+    "cliTuiHint": "CLI/TUI：安裝程式亦包含 micyou-cli 同 micyou-tui，可以喺 設定 → 執行模式 切換，適合無介面或者終端使用。"
   },
   "vbcableDetect": {
     "title": "需要虛擬咪高峰驅動",

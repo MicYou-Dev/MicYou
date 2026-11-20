@@ -79,6 +79,10 @@ const centralBtnRef = ref<HTMLButtonElement | null>(null);
 
 // App wizard and pocket mode settings
 const showOnboarding = ref(localStorage.getItem('micyou_onboarding_completed') !== 'true');
+// The installer drops a marker after every install/overwrite upgrade. When it
+// is present, show the wizard from the first page so the right-hand release
+// notes become the update announcement, even if the driver is already installed.
+const forceWelcome = ref(false);
 // Settings open in their own window; the main window only follows the
 // output device chosen there.
 const openSettings = async () => {
@@ -93,6 +97,21 @@ onMounted(() => {
   void track(onEvent('output-device-changed', (payload) => {
     server.outputDevice.value = payload;
   }));
+});
+
+// The Inno Setup installer cannot edit WebView2's localStorage, so it writes a
+// marker next to the shared config. Consume it here: forget the onboarding flag
+// and open the wizard (which carries the release notes) from page one.
+onMounted(async () => {
+  try {
+    if (await command('take_onboarding_reset')) {
+      localStorage.removeItem('micyou_onboarding_completed');
+      showOnboarding.value = true;
+      forceWelcome.value = true;
+    }
+  } catch (e) {
+    console.error('take_onboarding_reset failed:', e);
+  }
 });
 const pocketMode = useStorage('micyou_pocket_mode', false);
 const windowEffects = useWindowEffects({
@@ -157,6 +176,21 @@ async function switchToTui() {
   } catch (e) {
     console.error('switch_to_tui failed:', e);
     alert(`${t('settings.runMode.switchFailed')}: ${e}`);
+  }
+}
+
+// The onboarding release-notes panel hands the chosen virtual microphone back
+// here. Persist it through the same server prefs the settings window uses, and
+// keep "auto" represented as an empty string.
+async function applyUpdateChoice(device: string) {
+  server.outputDevice.value = device;
+  try {
+    const prefs = await command('get_server_prefs');
+    await command('save_server_prefs', {
+      prefs: { ...prefs, outputDevice: device === 'auto' ? '' : device },
+    });
+  } catch (e) {
+    console.error('save_server_prefs failed:', e);
   }
 }
 
@@ -437,7 +471,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <OnboardingWizard :visible="showOnboarding" @complete="showOnboarding = false" />
+  <OnboardingWizard
+    :visible="showOnboarding"
+    :force-welcome="forceWelcome"
+    @complete="showOnboarding = false"
+    @set-output-device="applyUpdateChoice"
+  />
   <div ref="rootRef" class="relative w-full h-screen overflow-hidden overscroll-none text-foreground bg-transparent origin-center">
     <!-- Rounded window background; pocket mode draws only its own bar and menus -->
     <div v-if="!pocketMode" data-blur-region class="absolute inset-0 -z-10 rounded-2xl bg-surface-container" />

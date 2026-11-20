@@ -94,6 +94,7 @@ export interface Commands {
 
   // About and logs
   get_app_version: { args: NoArgs; result: string };
+  take_onboarding_reset: { args: NoArgs; result: boolean };
   check_app_update: { args: { cdk: string | null }; result: UpdateCheckResult };
   get_sponsors: { args: NoArgs; result: string };
   export_log: { args: NoArgs; result: void };

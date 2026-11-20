@@ -594,7 +594,8 @@
     "skip": "跳过喵~",
     "complete": "设置完成喵~ ✨",
     "completeDesc": "都搞掂啦喵~现在可以开始使用 MicYou 了喵！",
-    "startUsing": "开始使用喵~ (๑•̀ㅂ•́)و✧"
+    "startUsing": "开始使用喵~ (๑•̀ㅂ•́)و✧",
+    "cliTuiHint": "CLI/TUI：安装包里也有 micyou-cli 和 micyou-tui 喵~可以在 设置 → 运行模式 里切换，适合无界面或终端使用喵~"
   },
   "vbcableDetect": {
     "title": "需要虚拟麦克风驱动喵~",

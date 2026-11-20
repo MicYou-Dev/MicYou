@@ -100,6 +100,16 @@ end;
 // resources\steam-audio\x64. pnputil returns 3010 when a reboot is required,
 // which still means the package was staged successfully. A missing or failed
 // driver package must not abort the application install.
+// The installer is a 32-bit process: {sys} maps to SysWOW64, whose pnputil
+// cannot install the 64-bit Steam driver. Use Sysnative for the 64-bit tools
+// when it exists, and fall back for 32-bit Windows.
+function NativeSystemFile(const RelativePath: String): String;
+begin
+  Result := ExpandConstant('{win}\Sysnative\' + RelativePath);
+  if not FileExists(Result) then
+    Result := ExpandConstant('{sys}\' + RelativePath);
+end;
+
 procedure MarkSteamAudioPending;
 var
   PendingDir: String;
@@ -136,7 +146,8 @@ end;
 procedure InstallSteamAudioDriver;
 var
   ResultCode: Integer;
-  DriverDir, MicInf, SpeakerInf: String;
+  Attempt: Integer;
+  DriverDir, MicInf, SpeakerInf, ConfigureLog: String;
   RebootRequired: Boolean;
 begin
   DriverDir := ExpandConstant('{app}\resources\steam-audio\x64');
@@ -149,7 +160,8 @@ begin
   end;
 
   RebootRequired := False;
-  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+  Log('pnputil: ' + NativeSystemFile('pnputil.exe'));
+  if (not Exec(NativeSystemFile('pnputil.exe'),
       '/add-driver "' + SpeakerInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
@@ -157,7 +169,7 @@ begin
   else if ResultCode = 3010 then
     RebootRequired := True;
 
-  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+  if (not Exec(NativeSystemFile('pnputil.exe'),
       '/add-driver "' + MicInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
@@ -180,15 +192,53 @@ begin
   end
   else if FileExists(ExpandConstant('{app}\resources\steam-audio\configure.ps1')) then
   begin
-    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-        '-NoProfile -ExecutionPolicy Bypass -File "' +
-        ExpandConstant('{app}\resources\steam-audio\configure.ps1') + '"',
-        '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
-      Log('Steam Streaming Microphone format/volume configuration failed with code ' +
-        IntToStr(ResultCode))
+    // Keep the script's output: without it a failed format/volume step is
+    // invisible in the silent install, which made driver bugs impossible to
+    // diagnose on user machines.
+    ConfigureLog := ExpandConstant('{userappdata}\micyou\steam-audio-configure.log');
+    ForceDirectories(ExtractFileDir(ConfigureLog));
+    Log('Steam Streaming Microphone configuration log: ' + ConfigureLog);
+    // Right after pnputil the endpoints are still being created, so the first
+    // format/volume pass can fail transiently. Retry instead of leaving the
+    // machine with an 8-channel, +30 dB virtual microphone.
+    Attempt := 1;
+    repeat
+      ResultCode := 1;
+      if Exec(ExpandConstant('{cmd}'),
+          '/C ""' + NativeSystemFile('WindowsPowerShell\v1.0\powershell.exe') +
+          '" -NoProfile -ExecutionPolicy Bypass -File "' +
+          ExpandConstant('{app}\resources\steam-audio\configure.ps1') + '" > "' +
+          ConfigureLog + '" 2>&1"',
+          '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+        Break;
+      Log('Steam Streaming Microphone format/volume configuration attempt ' +
+        IntToStr(Attempt) + ' failed with code ' + IntToStr(ResultCode));
+      if Attempt < 3 then
+        Sleep(5000);
+      Attempt := Attempt + 1;
+    until Attempt > 3;
+    if ResultCode <> 0 then
+      Log('Steam Streaming Microphone format/volume configuration failed after 3 attempts')
     else
       RemovePendingSteamAudioMarker;
   end;
+end;
+
+// The app learns that the setup wizard has already been seen from a
+// localStorage flag. An overwrite upgrade must show the tutorial (and the
+// release notes it carries) again, but Inno cannot edit WebView2's LevelDB
+// store. Drop a marker next to the shared config instead; the desktop app
+// consumes it on startup and clears the flag itself.
+procedure MarkOnboardingReset;
+var
+  MarkerPath: String;
+begin
+  MarkerPath := ExpandConstant('{userappdata}\micyou\onboarding-reset');
+  ForceDirectories(ExtractFileDir(MarkerPath));
+  if SaveStringToFile(MarkerPath, '1', False) then
+    Log('Onboarding reset marker written: ' + MarkerPath)
+  else
+    Log('Failed to write onboarding reset marker: ' + MarkerPath);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -201,6 +251,8 @@ begin
     // exactly these system-level steps.
     InstallSteamAudioDriver;
     AddFirewallRules;
+    // Written for first installs too; the flag is simply absent then.
+    MarkOnboardingReset;
   end;
 end;
 

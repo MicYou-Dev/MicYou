@@ -27,6 +27,12 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     host: host || false,
+    // The what's-new file lives next to gradle.properties (the version bump
+    // source) so releases update one obvious file. Vite's dev server must be
+    // allowed to read one level above the tauri-app root.
+    fs: {
+      allow: [path.resolve(import.meta.dirname, "..")],
+    },
     hmr: host
       ? {
           protocol: "ws",

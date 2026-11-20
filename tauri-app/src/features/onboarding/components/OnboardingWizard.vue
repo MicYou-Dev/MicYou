@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { X, CheckCircle2, Download, Loader2, ArrowRight } from '@lucide/vue';
 import { command, onEvent, openUrl } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
 import { isWindows } from '@/shared/lib/os';
+import ReleaseNotesPanel from './ReleaseNotesPanel.vue';
 
 const { t } = useI18n();
 
-const emit = defineEmits<{ complete: [] }>();
+const emit = defineEmits<{
+  complete: [];
+  'set-output-device': [device: string];
+}>();
 
-defineProps<{
+const props = defineProps<{
   visible: boolean;
+  /** Set after an install/overwrite upgrade: start at page one instead of the
+   *  completion page even when the Steam driver is already installed. */
+  forceWelcome?: boolean;
 }>();
 
 const step = ref(1);
@@ -31,7 +38,7 @@ onMounted(async () => {
   if (isWindows) {
     try {
       virtualAudioInstalled.value = await command('check_steam_audio');
-      if (virtualAudioInstalled.value) {
+      if (virtualAudioInstalled.value && !props.forceWelcome) {
         step.value = 3;
       }
     } catch (e) {
@@ -44,11 +51,31 @@ onMounted(async () => {
   }));
 });
 
+// The installer marker is consumed asynchronously, so `forceWelcome` may flip
+// after this component mounted and already jumped to the completion page.
+watch(
+  () => props.forceWelcome,
+  (force) => {
+    if (force) {
+      step.value = 1;
+      installError.value = '';
+    }
+  },
+);
+
 function skip() {
   if (isWindows && step.value === 1) {
     step.value = 3;
   } else {
     complete();
+  }
+}
+
+function next() {
+  if (step.value === 1) {
+    step.value = 2;
+  } else if (step.value === 2) {
+    step.value = 3;
   }
 }
 
@@ -93,7 +120,8 @@ async function openTextGuide() {
 
 <template>
   <div v-if="visible" class="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs">
-    <div class="bg-surface rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+    <div class="bg-surface rounded-3xl shadow-2xl w-full max-w-4xl mx-4 overflow-y-auto md:overflow-hidden max-h-[90vh] flex flex-col md:flex-row">
+      <div class="flex-1 min-w-0 flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between p-5 border-b border-outline-variant/20">
         <div class="flex items-center gap-2">
@@ -136,6 +164,8 @@ async function openTextGuide() {
           <span class="text-outline">|</span>
           <button @click="openTextGuide" class="text-primary hover:underline">{{ t('onboarding.textGuide') }}</button>
         </div>
+
+        <p class="text-xs text-on-surface-variant">{{ t('onboarding.cliTuiHint') }}</p>
       </div>
 
       <!-- Step 2: Steam Streaming Microphone detection (Windows only) -->
@@ -212,8 +242,8 @@ async function openTextGuide() {
 
         <div class="flex items-center gap-2">
           <button
-            v-if="step === 2 && virtualAudioInstalled"
-            @click="step = 3"
+            v-if="isWindows && (step === 1 || (step === 2 && virtualAudioInstalled))"
+            @click="next"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary flex items-center gap-1 transition-colors"
           >
             {{ t('onboarding.next') }} <ArrowRight class="w-4 h-4" />
@@ -227,6 +257,9 @@ async function openTextGuide() {
           </button>
         </div>
       </div>
+      </div>
+
+      <ReleaseNotesPanel @set-output-device="(device) => emit('set-output-device', device)" />
     </div>
   </div>
 </template>
