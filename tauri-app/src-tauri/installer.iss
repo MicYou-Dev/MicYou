@@ -100,6 +100,16 @@ end;
 // resources\steam-audio\x64. pnputil returns 3010 when a reboot is required,
 // which still means the package was staged successfully. A missing or failed
 // driver package must not abort the application install.
+// The installer is a 32-bit process: {sys} maps to SysWOW64, whose pnputil
+// cannot install the 64-bit Steam driver. Use Sysnative for the 64-bit tools
+// when it exists, and fall back for 32-bit Windows.
+function NativeSystemFile(const RelativePath: String): String;
+begin
+  Result := ExpandConstant('{win}\Sysnative\' + RelativePath);
+  if not FileExists(Result) then
+    Result := ExpandConstant('{sys}\' + RelativePath);
+end;
+
 procedure MarkSteamAudioPending;
 var
   PendingDir: String;
@@ -149,7 +159,7 @@ begin
   end;
 
   RebootRequired := False;
-  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+  if (not Exec(NativeSystemFile('pnputil.exe'),
       '/add-driver "' + SpeakerInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
@@ -157,7 +167,7 @@ begin
   else if ResultCode = 3010 then
     RebootRequired := True;
 
-  if (not Exec(ExpandConstant('{sys}\pnputil.exe'),
+  if (not Exec(NativeSystemFile('pnputil.exe'),
       '/add-driver "' + MicInf + '" /install', '', SW_HIDE,
       ewWaitUntilTerminated, ResultCode)) or
      ((ResultCode <> 0) and (ResultCode <> 3010)) then
@@ -180,7 +190,7 @@ begin
   end
   else if FileExists(ExpandConstant('{app}\resources\steam-audio\configure.ps1')) then
   begin
-    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    if (not Exec(NativeSystemFile('WindowsPowerShell\v1.0\powershell.exe'),
         '-NoProfile -ExecutionPolicy Bypass -File "' +
         ExpandConstant('{app}\resources\steam-audio\configure.ps1') + '"',
         '', SW_HIDE, ewWaitUntilTerminated, ResultCode)) or (ResultCode <> 0) then
