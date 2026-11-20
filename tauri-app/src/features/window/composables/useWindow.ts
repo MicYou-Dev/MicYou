@@ -35,7 +35,7 @@ export function useWindow(animations?: WindowAnimations) {
       console.error('show_main_window failed:', e);
     }
     isHidden.value = false;
-    await animations?.enter();
+    if (!isMacOS) await animations?.enter();
   }
 
   async function showMainWindow() {
@@ -85,7 +85,11 @@ export function useWindow(animations?: WindowAnimations) {
 
   async function hideMainWindow() {
     try {
-      await leave(() => command('hide_main_window'));
+      if (isMacOS) {
+        await command('hide_main_window');
+      } else {
+        await leave(() => command('hide_main_window'));
+      }
       isHidden.value = true;
     } catch (e) {
       console.error('hide_main_window failed:', e);
