@@ -35,7 +35,7 @@ const TOTAL_STEPS_OTHER = 2;
 const totalSteps = isWindows ? TOTAL_STEPS_WINDOWS : TOTAL_STEPS_OTHER;
 
 onMounted(async () => {
-  if (isWindows && !props.forceWelcome) {
+  if (isWindows) {
     try {
       virtualAudioInstalled.value = await command('check_steam_audio');
       if (virtualAudioInstalled.value && !props.forceWelcome) {
@@ -68,6 +68,14 @@ function skip() {
     step.value = 3;
   } else {
     complete();
+  }
+}
+
+function next() {
+  if (step.value === 1) {
+    step.value = 2;
+  } else if (step.value === 2) {
+    step.value = 3;
   }
 }
 
@@ -234,8 +242,8 @@ async function openTextGuide() {
 
         <div class="flex items-center gap-2">
           <button
-            v-if="step === 2 && virtualAudioInstalled"
-            @click="step = 3"
+            v-if="isWindows && (step === 1 || (step === 2 && virtualAudioInstalled))"
+            @click="next"
             class="px-6 py-2 bg-primary hover:bg-primary/90 rounded-xl text-sm font-bold text-on-primary flex items-center gap-1 transition-colors"
           >
             {{ t('onboarding.next') }} <ArrowRight class="w-4 h-4" />
