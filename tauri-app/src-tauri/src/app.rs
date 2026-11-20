@@ -208,6 +208,7 @@ pub fn run() {
             commands::about::get_log_path,
             commands::about::get_log_content,
             commands::about::open_log_dir,
+            commands::about::take_onboarding_reset,
             commands::plugins::list_plugins,
             commands::plugins::set_plugin_enabled,
             commands::plugins::uninstall_plugin,

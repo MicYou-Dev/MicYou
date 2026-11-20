@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
@@ -10,6 +10,10 @@ const cargoTomlPath = resolve(__dirname, 'src-tauri', 'Cargo.toml');
 const workspaceCargoTomlPath = resolve(__dirname, 'Cargo.toml');
 const packageJsonPath = resolve(__dirname, 'package.json');
 const installerIssPath = resolve(__dirname, 'src-tauri', 'installer.iss');
+// The in-app "What's New" panel reads this file. It lives next to
+// gradle.properties so a release updates the version and the announcement in
+// the same obvious place.
+const releaseNotesPath = resolve(__dirname, '..', 'release-notes.json');
 
 function readGradleVersion() {
   const content = readFileSync(gradlePropsPath, 'utf-8');
@@ -105,7 +109,13 @@ try {
   updateCargoLock();
   updatePackageJson(semver);
   updateInstallerIss(semver);
-  
+
+  if (!existsSync(releaseNotesPath)) {
+    console.warn(`Missing release notes: ${releaseNotesPath}`);
+  } else {
+    console.log(`Release notes: ${releaseNotesPath} (update them for ${semver})`);
+  }
+
   console.log('Version sync completed!');
 } catch (error) {
   console.error('Failed to sync version:', error.message);

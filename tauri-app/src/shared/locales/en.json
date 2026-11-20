@@ -596,7 +596,8 @@
     "skip": "Skip",
     "complete": "Setup Complete",
     "completeDesc": "You're all set! You can now start using MicYou.",
-    "startUsing": "Start Using"
+    "startUsing": "Start Using",
+    "cliTuiHint": "CLI/TUI: the installer also ships micyou-cli and micyou-tui. Switch under Settings → Run mode for headless or terminal use."
   },
   "vbcableDetect": {
     "title": "Virtual Microphone Driver Required",

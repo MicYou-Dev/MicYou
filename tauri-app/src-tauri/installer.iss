@@ -224,6 +224,23 @@ begin
   end;
 end;
 
+// The app learns that the setup wizard has already been seen from a
+// localStorage flag. An overwrite upgrade must show the tutorial (and the
+// release notes it carries) again, but Inno cannot edit WebView2's LevelDB
+// store. Drop a marker next to the shared config instead; the desktop app
+// consumes it on startup and clears the flag itself.
+procedure MarkOnboardingReset;
+var
+  MarkerPath: String;
+begin
+  MarkerPath := ExpandConstant('{userappdata}\micyou\onboarding-reset');
+  ForceDirectories(ExtractFileDir(MarkerPath));
+  if SaveStringToFile(MarkerPath, '1', False) then
+    Log('Onboarding reset marker written: ' + MarkerPath)
+  else
+    Log('Failed to write onboarding reset marker: ' + MarkerPath);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -234,6 +251,8 @@ begin
     // exactly these system-level steps.
     InstallSteamAudioDriver;
     AddFirewallRules;
+    // Written for first installs too; the flag is simply absent then.
+    MarkOnboardingReset;
   end;
 end;
 

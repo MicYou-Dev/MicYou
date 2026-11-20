@@ -596,7 +596,8 @@
     "skip": "跳过",
     "complete": "设置完成",
     "completeDesc": "一切就绪！您现在可以开始使用 MicYou 了！",
-    "startUsing": "开始使用"
+    "startUsing": "开始使用",
+    "cliTuiHint": "CLI/TUI：安装包同时包含 micyou-cli 和 micyou-tui，可在 设置 → 运行模式 中切换，适合无界面或终端使用。"
   },
   "vbcableDetect": {
     "title": "需要虚拟麦克风驱动",
