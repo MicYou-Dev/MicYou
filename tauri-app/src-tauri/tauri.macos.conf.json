@@ -6,6 +6,7 @@
         "title": "MicYou",
         "width": 800,
         "height": 600,
+        "visible": false,
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
