@@ -14,10 +14,13 @@ microphone path instead of requiring a separate VB-CABLE download:
 
 Valve's driver defaults are not usable as a microphone cable without
 configuration: the Microphone render endpoint starts at 8 channels (the loopback
-then decimates, turning 1 kHz into 125 Hz) and the capture endpoint starts at
-+30 dB (which clips every recording app). `configure.ps1` sets the render
-endpoint to mono 48 kHz 16-bit and the capture gain to 0 dB via
-`IPolicyConfig::SetDeviceFormat` and `IAudioEndpointVolume`, then cycles
+then decimates, turning 1 kHz into 125 Hz), the capture endpoint starts at
++30 dB (which clips every recording app), and the render and capture sides can
+advertise different formats (which makes the loopback resampler produce
+extremely loud artifacts). `configure.ps1` sets both endpoints to stereo
+24-bit 48 kHz via `IPolicyConfig::SetDeviceFormat`, applies 0 dB capture gain
+via `IAudioEndpointVolume`, disables the per-endpoint exclusive-mode policy so
+an application cannot reopen either side with another format, and then cycles
 `AudioEndpointBuilder`.
 
 The installer stages both packages with `pnputil /add-driver <inf> /install`

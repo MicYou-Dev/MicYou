@@ -32,7 +32,7 @@
 - Configure a processing pipeline with AI and traditional noise suppression, acoustic echo cancellation (AEC), dereverberation, equalizer, amplification, automatic gain control (AGC), and voice activity detection (VAD).
 - Inspect audio level, bitrate, latency, jitter, packet loss, and buffer status; mute or monitor incoming audio at any time.
 - Route audio through Steam Streaming Microphone on Windows, PipeWire on Linux, or BlackHole on macOS for use in calls, games, streaming, and recording apps.
-- The Windows installer installs Valve's Steam Streaming Microphone and configures it for microphone use (mono 48 kHz, unity capture gain). Select **Steam Streaming Microphone** in MicYou's output device list and in the recording application.
+- The Windows installer installs Valve's Steam Streaming Microphone and configures it for microphone use (stereo 48 kHz 24-bit, unity capture gain, exclusive mode disabled). Select **Steam Streaming Microphone** in MicYou's output device list and in the recording application.
 - Customize Material 3 interfaces with light/dark themes, dynamic colors, custom backgrounds, desktop pocket mode, system tray controls, and multiple languages.
 - Share connection, DSP, language, and theme preferences between the desktop GUI, CLI, and TUI.
 - Extend functionality with a dual-runtime plugin system (Native and WASM) and an in-app marketplace for custom DSP nodes, soundpads, and control widgets.

@@ -33,7 +33,7 @@
 - 可配置包含 AI 与传统降噪、声学回声消除 (AEC)、去混响、均衡器、放大、自动增益控制 (AGC) 和语音活动检测 (VAD) 的音频处理链
 - 可实时查看音量、比特率、延迟、抖动、丢包率和缓冲区状态，并随时静音或监听输入音频
 - 通过 Windows 的 Steam Streaming Microphone、Linux 的 PipeWire 或 macOS 的 BlackHole，将手机音频用于通话、游戏、直播与录音软件
-- Windows 安装包会一并安装 Valve 的 Steam Streaming Microphone 并配置为麦克风用途（单声道 48 kHz、采集增益 0 dB）。在 MicYou 输出设备与录音软件中均选择 **Steam Streaming Microphone**。
+- Windows 安装包会一并安装 Valve 的 Steam Streaming Microphone 并配置为麦克风用途（双声道 48 kHz 24-bit、采集增益 0 dB、禁用独占模式）。在 MicYou 输出设备与录音软件中均选择 **Steam Streaming Microphone**。
 - 支持 Material 3、深浅色主题、动态取色、自定义背景、桌面袖珍模式、系统托盘控制和多语言界面
 - 桌面端 GUI、CLI 与 TUI 共用连接、DSP、语言和主题配置
 - 支持插件扩展生态（Native 与 WASM 双运行时），内置应用内插件市场，支持自定义 DSP 节点、音效板与控制扩展
