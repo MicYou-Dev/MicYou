@@ -167,15 +167,6 @@ fn map_channels(input: &[f32], in_channels: usize, out_channels: usize, output: 
     }
 }
 
-/// Convert one f32 sample to 24-bit PCM with TPDF dither. dasp's f32→I24
-/// conversion neither rounds nor clamps and overflows at ±1.0, so scale and
-/// clamp explicitly instead of going through `Sample::from_sample`.
-fn f32_to_i24(sample: f32) -> cpal::I24 {
-    let dither = (rand_f32() - 0.5 + rand_f32() - 0.5) * (1.0 / 8_388_608.0);
-    let scaled = ((sample + dither) * 8_388_608.0).round();
-    cpal::I24::new_unchecked(scaled.clamp(-8_388_608.0, 8_388_607.0) as i32)
-}
-
 /// Error callback shared by the output and monitor streams: it logs the first
 /// error only and raises `failed`, because cpal re-invokes it on every poll
 /// iteration while the device stays broken.
@@ -718,49 +709,6 @@ impl AudioOutputManager {
                                 (rand_f32() - 0.5 + rand_f32() - 0.5) * (1.0 / 32768.0);
                             let dithered = f_sample + dither;
                             *sample = (dithered * 32768.0).clamp(-32768.0, 32767.0) as i16;
-                        }
-                    },
-                    err_fn,
-                    None,
-                )?
-            }
-            SampleFormat::I24 => {
-                // Older or manually configured Steam Streaming Microphone
-                // endpoints can be left at 24-bit, which WASAPI reports as I24
-                // (24 valid bits in a 32-bit container). Keep this path so the
-                // stream can still open instead of failing outright; the
-                // installer now configures the unambiguous 32-bit format.
-                let underrun_counter = Arc::new(AtomicU32::new(0));
-                let mut last_sample = 0.0f32;
-                let muted_flag = self.muted.clone();
-                let ticks = self.callback_ticks.clone();
-                device.build_output_stream(
-                    stream_config,
-                    move |data: &mut [cpal::I24], _: &OutputCallbackInfo| {
-                        ticks.fetch_add(1, Ordering::Relaxed);
-                        if muted_flag.load(Ordering::Relaxed) {
-                            consumer.clear();
-                            for sample in data.iter_mut() {
-                                *sample = cpal::I24::new_unchecked(0);
-                            }
-                            last_sample = 0.0;
-                            underrun_counter.store(0, Ordering::Relaxed);
-                            return;
-                        }
-                        for sample in data.iter_mut() {
-                            let f_sample = match consumer.try_pop() {
-                                Some(s) => {
-                                    underrun_counter.store(0, Ordering::Relaxed);
-                                    last_sample = s;
-                                    s
-                                }
-                                None => {
-                                    let count = underrun_counter.fetch_add(1, Ordering::Relaxed);
-                                    let fade = (1.0 - count as f32 * 0.01).max(0.0);
-                                    last_sample * fade
-                                }
-                            };
-                            *sample = f32_to_i24(f_sample);
                         }
                     },
                     err_fn,
