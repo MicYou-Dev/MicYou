@@ -17,11 +17,16 @@ configuration: the Microphone render endpoint starts at 8 channels (the loopback
 then decimates, turning 1 kHz into 125 Hz), the capture endpoint starts at
 +30 dB (which clips every recording app), and the render and capture sides can
 advertise different formats (which makes the loopback resampler produce
-extremely loud artifacts). `configure.ps1` sets both endpoints to stereo
-24-bit 48 kHz via `IPolicyConfig::SetDeviceFormat`, applies 0 dB capture gain
-via `IAudioEndpointVolume`, disables the per-endpoint exclusive-mode policy so
-an application cannot reopen either side with another format, and then cycles
-`AudioEndpointBuilder`.
+extremely loud artifacts). The driver's ring buffer copies raw bytes without
+format conversion, so both sides must present the same byte geometry. A 24-bit
+packed endpoint is ambiguous because Windows mixes through a 32-bit container
+and the engine can choose 24-bit for one side and 32-bit for the other; the raw
+ring then misreads the bytes as a periodic explosion. `configure.ps1` therefore
+sets both endpoints to stereo 48 kHz 32-bit PCM (matching MicYou's stereo
+48 kHz F32LE DSP chain) via `IPolicyConfig::SetDeviceFormat`, applies 0 dB
+capture gain via `IAudioEndpointVolume`, disables the per-endpoint exclusive-mode
+policy so an application cannot reopen either side with another format, and then
+cycles `AudioEndpointBuilder`.
 
 The installer stages both packages with `pnputil /add-driver <inf> /install`
 during setup (admin mode), and the onboarding flow can install or repair them

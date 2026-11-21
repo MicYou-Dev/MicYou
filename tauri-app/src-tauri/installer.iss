@@ -181,9 +181,11 @@ begin
   // and render/capture formats that can disagree. Rendering 8 channels makes
   // the loopback decimate the signal (a 1 kHz tone arrives as 125 Hz), the
   // capture boost clips every recording app, and a render/capture format
-  // mismatch makes the loopback produce extremely loud artifacts. Set stereo
-  // 24-bit 48 kHz on both endpoints, unity capture gain and disable exclusive
-  // mode, then cycle the audio endpoint builder; see
+  // mismatch makes the loopback produce extremely loud artifacts. A 24-bit
+  // packed endpoint is ambiguous because Windows mixes through a 32-bit
+  // container; use the unambiguous 32-bit container to match MicYou's stereo
+  // 48 kHz F32LE DSP chain. Set unity capture gain and disable exclusive mode,
+  // then cycle the audio endpoint builder; see
   // resources/steam-audio/configure.ps1.
   if RebootRequired then
   begin

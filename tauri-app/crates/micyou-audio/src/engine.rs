@@ -604,7 +604,7 @@ impl AudioOutputManager {
                 && config.channels() != 2
             {
                 log::warn!(
-                    "[Audio] Steam Streaming Microphone is {} channels instead of 2; rerun MicYou setup/repair to apply the stereo 48 kHz 24-bit endpoint configuration.",
+                    "[Audio] Steam Streaming Microphone is {} channels instead of 2; rerun MicYou setup/repair to apply the stereo 48 kHz 32-bit endpoint configuration.",
                     config.channels()
                 );
             }
@@ -725,10 +725,11 @@ impl AudioOutputManager {
                 )?
             }
             SampleFormat::I24 => {
-                // The installer configures the Steam Streaming Microphone as
-                // stereo 48 kHz 24-bit, and WASAPI reports that device format
-                // as I24 (24 valid bits in a 32-bit container), so this path
-                // must exist or the virtual mic cannot open at all.
+                // Older or manually configured Steam Streaming Microphone
+                // endpoints can be left at 24-bit, which WASAPI reports as I24
+                // (24 valid bits in a 32-bit container). Keep this path so the
+                // stream can still open instead of failing outright; the
+                // installer now configures the unambiguous 32-bit format.
                 let underrun_counter = Arc::new(AtomicU32::new(0));
                 let mut last_sample = 0.0f32;
                 let muted_flag = self.muted.clone();

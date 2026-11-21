@@ -12,8 +12,18 @@
 # allow exclusive mode by default, so one application can reopen either side
 # with its own format and break the pair.
 #
-# Configure a matched virtual cable on both endpoints: stereo 48 kHz 24-bit,
-# unity capture gain, and exclusive mode disabled. MicYou renders into the
+# The driver's loopback ring copies raw bytes and performs no format conversion,
+# so both sides must present the same byte geometry to the driver. A 24-bit
+# packed endpoint is ambiguous here: the Windows mix format is a 32-bit
+# container/24-valid format while the device format is 24-bit packed, and the
+# engine can pick 24-bit for one stream and 32-bit for the other, which the raw
+# ring then misreads as the observed periodic explosion. Configure both
+# endpoints with the unambiguous 32-bit container instead: that matches MicYou's
+# stereo 48 kHz F32LE DSP chain, keeps 24-bit source material lossless, and
+# makes render and capture byte geometry identical.
+#
+# Configure a matched virtual cable on both endpoints: stereo 48 kHz 32-bit
+# PCM, unity capture gain, and exclusive mode disabled. MicYou renders into the
 # playback endpoint and calls/games/streaming apps capture from the recording
 # endpoint, so both sides must advertise the same format.
 #
@@ -24,7 +34,7 @@ $ErrorActionPreference = 'Stop'
 
 $TargetChannels = 2
 $TargetRate = 48000
-$TargetBits = 24
+$TargetBits = 32
 # SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT
 $TargetChannelMask = 0x3
 $ExclusiveAllowKey = '{b3f8fa53-0004-438e-9003-51a46e139bfc},3'
@@ -275,7 +285,7 @@ $needFormat = -not (Test-TargetFormat (Get-EndpointFormat $render.PropertiesPath
     -not (Test-TargetFormat (Get-EndpointFormat $capture.PropertiesPath))
 
 if ($needFormat) {
-    Write-Output 'Applying stereo 24-bit 48 kHz to both Steam Streaming Microphone endpoints.'
+    Write-Output 'Applying stereo 32-bit 48 kHz to both Steam Streaming Microphone endpoints.'
     foreach ($endpoint in @($render, $capture)) {
         # Setting an endpoint to the format it already has returns
         # E_ACCESSDENIED, so only touch the side that actually differs.
@@ -356,5 +366,5 @@ if ($errors.Count -gt 0) {
 }
 
 $before = [SteamAudioConfig]::SetVolume($capture.Id, 0.0)
-Write-Output ("Steam Streaming Microphone configured: stereo 24-bit 48 kHz on both endpoints, exclusive mode disabled, capture gain {0:N1} dB -> 0.0 dB." -f $before)
+Write-Output ("Steam Streaming Microphone configured: stereo 32-bit 48 kHz on both endpoints, exclusive mode disabled, capture gain {0:N1} dB -> 0.0 dB." -f $before)
 exit 0
