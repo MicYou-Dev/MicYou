@@ -21,6 +21,8 @@ export interface AppEvents {
   'tray-action': string;
   /** macOS: the native close button, forwarded so it keeps the hide/confirm flow. */
   'main-window-close-requested': unknown;
+  /** macOS Dock reopen event. */
+  'macos-dock-reopen': unknown;
   /** macOS: an app menu item the frontend declared was clicked; payload is its id. */
   'app-menu-action': string;
   /** Backend → settings window when the hidden window is shown again. */

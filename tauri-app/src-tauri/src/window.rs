@@ -280,6 +280,8 @@ pub async fn open_settings_window(app: AppHandle, title: String) -> Result<(), S
 #[tauri::command]
 pub fn show_main_window(app: AppHandle) -> Result<(), String> {
     let win = main_window(&app)?;
+    #[cfg(target_os = "macos")]
+    set_macos_dock_mode(&app, true)?;
     let _ = win.unminimize();
     win.show().map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
@@ -297,7 +299,23 @@ pub fn minimize_main_window(app: AppHandle) -> Result<(), String> {
 pub fn hide_main_window(app: AppHandle) -> Result<(), String> {
     let win = main_window(&app)?;
     win.hide().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    set_macos_dock_mode(&app, false)?;
     Ok(())
+}
+
+/// Toggle Dock visibility with the main window.
+#[cfg(target_os = "macos")]
+fn set_macos_dock_mode(app: &AppHandle, window_visible: bool) -> Result<(), String> {
+    let (policy, dock_visible) = if window_visible {
+        (tauri::ActivationPolicy::Regular, true)
+    } else {
+        (tauri::ActivationPolicy::Accessory, false)
+    };
+    app.set_activation_policy(policy)
+        .map_err(|e| format!("failed to change macOS activation policy: {e}"))?;
+    app.set_dock_visibility(dock_visible)
+        .map_err(|e| format!("failed to change macOS Dock visibility: {e}"))
 }
 
 /// Places the macOS traffic lights for the active header layout. No-op elsewhere.

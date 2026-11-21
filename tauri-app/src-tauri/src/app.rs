@@ -234,10 +234,23 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                if let Some(state) = app.try_state::<ServerState>() {
-                    service::close_output_device(&state);
+            match event {
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen {
+                    has_visible_windows: false,
+                    ..
+                } => {
+                    // Let the frontend restore the window and its animation.
+                    if let Err(error) = app.emit("macos-dock-reopen", ()) {
+                        log::warn!(target: "window", "failed to notify frontend after Dock reopen: {error}");
+                    }
                 }
+                tauri::RunEvent::Exit => {
+                    if let Some(state) = app.try_state::<ServerState>() {
+                        service::close_output_device(&state);
+                    }
+                }
+                _ => {}
             }
         });
 }

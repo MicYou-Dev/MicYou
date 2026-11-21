@@ -1,6 +1,7 @@
 import { onMounted, ref } from 'vue';
 import { appWindow, command, onEvent } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
+import { isMacOS } from '@/shared/lib/os';
 
 interface WindowAnimations {
   /** Plays the content exit animation before the window disappears. */
@@ -34,7 +35,7 @@ export function useWindow(animations?: WindowAnimations) {
       console.error('show_main_window failed:', e);
     }
     isHidden.value = false;
-    await animations?.enter();
+    if (!isMacOS) await animations?.enter();
   }
 
   async function showMainWindow() {
@@ -84,7 +85,11 @@ export function useWindow(animations?: WindowAnimations) {
 
   async function hideMainWindow() {
     try {
-      await leave(() => command('hide_main_window'));
+      if (isMacOS) {
+        await command('hide_main_window');
+      } else {
+        await leave(() => command('hide_main_window'));
+      }
       isHidden.value = true;
     } catch (e) {
       console.error('hide_main_window failed:', e);
@@ -93,7 +98,12 @@ export function useWindow(animations?: WindowAnimations) {
 
   async function exitApp() {
     try {
-      await leave(() => command('exit_app'));
+      if (isMacOS) {
+        // Don't wait for animations on a hidden macOS window.
+        await command('exit_app');
+      } else {
+        await leave(() => command('exit_app'));
+      }
     } catch (e) {
       console.error('exit_app failed:', e);
     }
@@ -107,6 +117,11 @@ export function useWindow(animations?: WindowAnimations) {
     }
     if (remembered === 'exit') {
       void exitApp();
+      return;
+    }
+    // On macOS, default close hides the window unless the user saved a choice.
+    if (remembered === null && isMacOS) {
+      void hideMainWindow();
       return;
     }
     showCloseConfirm.value = true;
@@ -135,6 +150,9 @@ export function useWindow(animations?: WindowAnimations) {
   // Both can fire for one click, which is harmless: the dialog is a ref and
   // hide/exit already collapse concurrent calls into one animation.
   onMounted(() => void track(onEvent('main-window-close-requested', requestClose)));
+
+  // Reuse the tray reveal flow when macOS reopens from the Dock.
+  onMounted(() => void track(onEvent('macos-dock-reopen', () => void reveal())));
 
   return {
     isHidden, showCloseConfirm,
