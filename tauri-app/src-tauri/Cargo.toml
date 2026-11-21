@@ -1,6 +1,6 @@
 [package]
 name = "micyou-app"
-version = "2.2.2"
+version = "2.2.3"
 description = "MicYou - Turn your Android device into a high-quality PC microphone"
 authors.workspace = true
 edition.workspace = true
