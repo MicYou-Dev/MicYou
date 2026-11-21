@@ -16,11 +16,13 @@
 //! Valve's Steam Streaming audio driver, used as MicYou's Windows virtual
 //! microphone path.
 //!
-//! The driver package (`SteamStreamingMicrophone` for the recording endpoint
-//! and `SteamStreamingSpeakers` for the playback endpoint MicYou renders into)
-//! ships as a WHQL-signed INF/SYS/CAT set. It is bundled under
-//! `src-tauri/resources/steam-audio/x64` so a default install needs no
+//! The driver package ships as a WHQL-signed INF/SYS/CAT set. It is bundled
+//! under `src-tauri/resources/steam-audio/x64` so a default install needs no
 //! download and no extra software (VB-CABLE used to be a separate download).
+//! `SteamStreamingMicrophone` provides the render/capture loopback pair MicYou
+//! uses as its virtual microphone; `SteamStreamingSpeakers` is Valve's playback
+//! sibling, installed for Steam Link compatibility and hidden from MicYou's
+//! device picker.
 //!
 //! Drivers are installed through `pnputil /add-driver <inf> /install`, which
 //! needs elevation. The in-app path raises one UAC prompt; the Inno Setup
@@ -45,9 +47,10 @@ pub fn is_steam_audio_device(name: &str) -> bool {
 
 /// Check whether the Steam Streaming Microphone render endpoint is usable.
 /// The driver package can be present while the endpoint is disabled, or while
-/// it is still at the driver default (8 channels, +30 dB capture gain); those
-/// states must not be reported as "installed" or the UI never offers the repair
-/// path that runs `configure.ps1`.
+/// it still has the driver defaults (8 channels, +30 dB capture gain, render
+/// and capture formats that disagree); those states must not be reported as
+/// "installed" or the UI never offers the repair path that runs
+/// `configure.ps1`.
 #[cfg(target_os = "windows")]
 pub fn is_installed() -> bool {
     use cpal::traits::{DeviceTrait, HostTrait};
@@ -58,7 +61,7 @@ pub fn is_installed() -> bool {
             if let Some(name) = micyou_audio::device_name(&dev) {
                 if name.to_lowercase().contains("steam streaming microphone") {
                     if let Ok(config) = dev.default_output_config() {
-                        return config.channels() <= 2 && config.sample_rate() == 48_000;
+                        return config.channels() == 2 && config.sample_rate() == 48_000;
                     }
                     return false;
                 }
@@ -401,7 +404,8 @@ async fn install_inner(
     // Steam Link / Remote Play may have installed the package without the
     // MicYou endpoint configuration. Run the idempotent configure script even
     // when the driver is already present, instead of returning "Already
-    // installed" and leaving the 8-channel / +30 dB defaults in place.
+    // installed" and leaving the driver defaults (8 channels, +30 dB capture
+    // gain, mismatched render/capture formats) in place.
     if driver_present() {
         let Some(configure) = configure.as_deref() else {
             return VirtualAudioResult {

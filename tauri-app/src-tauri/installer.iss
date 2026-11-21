@@ -177,11 +177,16 @@ begin
   else if ResultCode = 3010 then
     RebootRequired := True;
 
-  // Valve's driver defaults to an 8-channel render format and +30 dB capture
-  // gain. Rendering 8 channels makes the loopback decimate the signal (a 1 kHz
-  // tone arrives as 125 Hz) and the capture boost clips every recording app.
-  // Set mono 48 kHz and unity capture gain, then cycle the audio endpoint
-  // builder; see resources/steam-audio/configure.ps1.
+  // Valve's driver defaults to an 8-channel render format, +30 dB capture gain
+  // and render/capture formats that can disagree. Rendering 8 channels makes
+  // the loopback decimate the signal (a 1 kHz tone arrives as 125 Hz), the
+  // capture boost clips every recording app, and a render/capture format
+  // mismatch makes the loopback produce extremely loud artifacts. A 24-bit
+  // packed endpoint is ambiguous because Windows mixes through a 32-bit
+  // container; use the unambiguous 32-bit container to match MicYou's stereo
+  // 48 kHz F32LE DSP chain. Set unity capture gain and disable exclusive mode,
+  // then cycle the audio endpoint builder; see
+  // resources/steam-audio/configure.ps1.
   if RebootRequired then
   begin
     // The endpoints do not exist until the reboot; persist the pending state
@@ -200,7 +205,7 @@ begin
     Log('Steam Streaming Microphone configuration log: ' + ConfigureLog);
     // Right after pnputil the endpoints are still being created, so the first
     // format/volume pass can fail transiently. Retry instead of leaving the
-    // machine with an 8-channel, +30 dB virtual microphone.
+    // machine with an unconfigured virtual microphone.
     Attempt := 1;
     repeat
       ResultCode := 1;

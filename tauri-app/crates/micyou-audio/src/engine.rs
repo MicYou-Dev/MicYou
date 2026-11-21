@@ -591,9 +591,11 @@ impl AudioOutputManager {
 
         let config = device.default_output_config()?;
         if let Some(name) = device_name(&device) {
-            if name.to_lowercase().contains("steam streaming microphone") && config.channels() > 2 {
+            if name.to_lowercase().contains("steam streaming microphone")
+                && config.channels() != 2
+            {
                 log::warn!(
-                    "[Audio] Steam Streaming Microphone is still {} channels; rerun MicYou setup/repair to apply the mono endpoint configuration.",
+                    "[Audio] Steam Streaming Microphone is {} channels instead of 2; rerun MicYou setup/repair to apply the stereo 48 kHz 32-bit endpoint configuration.",
                     config.channels()
                 );
             }
