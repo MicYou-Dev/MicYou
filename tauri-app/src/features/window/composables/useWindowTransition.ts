@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import { isMacOS } from '@/shared/lib/os';
 
 interface WindowTransitionOptions {
   /** Drop compositor blur and shadow first, so no empty glass is left behind. */
@@ -50,14 +51,21 @@ export function useWindowTransition(target: Ref<HTMLElement | null>, options: Wi
 
   /** Fade the content out before the window is hidden or closed. */
   async function exit() {
+    const effects = isMacOS ? undefined : options.suspendEffects?.();
+    const keyframes: Keyframe[] = isMacOS
+      ? [{ opacity: 1 }, { opacity: 0 }]
+      : [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.97)' }];
     await Promise.all([
-      options.suspendEffects?.(),
-      play([[[{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.97)' }], { duration: 150, easing: ACCELERATE }]], true),
+      effects,
+      play([[keyframes, { duration: 150, easing: ACCELERATE }]], true),
     ]);
   }
 
   /** Bring the content in right after the window was shown. */
   function enter(): Promise<void> {
+    if (isMacOS) {
+      return play([[[{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: STANDARD }]], false);
+    }
     return play(
       [
         [[{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: STANDARD }],

@@ -141,7 +141,7 @@ export interface Commands {
   // macOS chrome: the app menu, the native window controls and the Dock badge.
   // The backend ignores all three on other platforms.
   set_app_menu: { args: { menu: MenuNode[] }; result: void };
-  apply_macos_window_layout: { args: { mode: 'full' | 'pocket' }; result: void };
+  apply_macos_window_layout: { args: { mode: 'full' | 'pocket'; centerY?: number; insetX?: number }; result: void };
   set_dock_badge: { args: { label: string | null }; result: void };
 }
 

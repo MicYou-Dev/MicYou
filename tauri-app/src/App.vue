@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MacOSWindowSurface from '@/shared/components/MacOSWindowSurface.vue';
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useStorage, onClickOutside } from '@vueuse/core';
 import { useI18n } from 'vue-i18n';
@@ -120,7 +121,8 @@ const windowEffects = useWindowEffects({
   shadowRadius: computed(() => (pocketMode.value ? null : 16)),
 });
 const rootRef = ref<HTMLElement | null>(null);
-const transition = useWindowTransition(rootRef, { suspendEffects: windowEffects.suspend });
+const transitionSurfaceRef = ref<HTMLElement | null>(null);
+const transition = useWindowTransition(isMacOS ? transitionSurfaceRef : rootRef, { suspendEffects: windowEffects.suspend });
 const win = useWindow({ exit: transition.exit, enter: transition.enter, prepare: windowEffects.apply });
 
 // IP configuration selector panel behavior
@@ -380,12 +382,29 @@ function stopPocketObserver() {
   pocketRaf = 0;
 }
 
+const mainHeader = ref<HTMLElement | null>(null);
+let headerObserver: ResizeObserver | undefined;
+watch(mainHeader, (header) => {
+  headerObserver?.disconnect();
+  if (!isMacOS || !header) return;
+  headerObserver = new ResizeObserver(() => void applyWindowControlLayout('full'));
+  headerObserver.observe(header);
+});
+onUnmounted(() => headerObserver?.disconnect());
+
 // The native window controls sit at a different height per layout, and the
 // resize above makes AppKit restore them, so the layout is re-applied after it.
 async function applyWindowControlLayout(mode: 'full' | 'pocket') {
   if (!isMacOS) return;
   try {
-    await command('apply_macos_window_layout', { mode });
+    const header = mode === 'full' ? mainHeader.value : null;
+    const rect = header?.getBoundingClientRect();
+    const style = header ? getComputedStyle(header) : undefined;
+    await command('apply_macos_window_layout', {
+      mode,
+      centerY: rect ? rect.top + rect.height / 2 : undefined,
+      insetX: rect && style ? rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) : undefined,
+    });
   } catch (e) {
     console.error('apply_macos_window_layout failed:', e);
   }
@@ -481,6 +500,7 @@ onUnmounted(() => {
     <!-- Rounded window background; pocket mode draws only its own bar and menus -->
     <div v-if="!pocketMode" data-blur-region class="absolute inset-0 -z-10 rounded-2xl bg-surface-container" />
 
+    <MacOSWindowSurface surface-class="absolute inset-0" :element-ref="el => transitionSurfaceRef = el">
     <!-- Pocket Mode -->
     <div v-if="pocketMode" class="pocket-root p-1.5">
       <div ref="pocketContentRef" class="w-max" :class="dragSurfaceClass" @mousedown="startDrag">
@@ -513,10 +533,10 @@ onUnmounted(() => {
     <!-- Full Mode -->
     <div v-else class="absolute inset-0 flex flex-col p-3 gap-3">
       <!-- Header Section -->
-      <div class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 shrink-0 relative z-30" :class="dragSurfaceClass" @mousedown="startDrag">
+      <div ref="mainHeader" class="haze-surface rounded-2xl flex justify-between items-center px-4 py-2 shrink-0 relative z-30" :class="dragSurfaceClass" @mousedown="startDrag">
         <div class="flex items-center gap-3">
           <!-- macOS uses the native window controls; keep their footprint clear -->
-          <div v-if="isMacOS" class="macos-titlebar-spacer mr-1 shrink-0" />
+          <div v-if="isMacOS" class="macos-titlebar-spacer shrink-0" />
           <div class="w-8 h-8 text-primary pointer-events-none [&>svg]:w-full [&>svg]:h-full" v-html="appIconSvg"></div>
           <div class="flex flex-col pointer-events-none select-none">
             <span class="text-sm font-extrabold text-primary">MicYou Desktop</span>
@@ -852,5 +872,6 @@ onUnmounted(() => {
         </div>
       </div>
     </Transition>
+    </MacOSWindowSurface>
   </div>
 </template>

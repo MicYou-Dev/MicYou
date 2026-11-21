@@ -21,15 +21,14 @@ use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "macos")]
 #[allow(unexpected_cfgs)]
-pub fn apply_macos_vibrancy(win: &tauri::WebviewWindow) {
+pub fn apply_macos_vibrancy(win: &tauri::WebviewWindow, corner_radius: Option<f64>) {
     use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
     let _ = apply_vibrancy(
         win,
         NSVisualEffectMaterial::Sidebar,
         Some(NSVisualEffectState::Active),
-        // Matches the CSS `rounded-2xl` window chrome.
-        Some(16.0),
+        corner_radius,
     );
 
     use objc::runtime::{Class, Object, NO};
@@ -49,7 +48,7 @@ pub fn apply_macos_vibrancy(win: &tauri::WebviewWindow) {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn apply_macos_vibrancy(_: &tauri::WebviewWindow) {}
+pub fn apply_macos_vibrancy(_: &tauri::WebviewWindow, _: Option<f64>) {}
 
 /// Windows 11: let DWM round the frameless window so the acrylic backdrop
 /// follows the rounded content. Windows 10 rejects the attribute; that is fine.
@@ -228,8 +227,7 @@ pub fn set_window_shadow(window: tauri::WebviewWindow, radius: Option<u32>) -> R
 
 pub const SETTINGS_WINDOW_LABEL: &str = "settings";
 
-/// Opens the settings window, or focuses it when it is already open. It uses
-/// the same frameless, transparent chrome as the main window.
+/// Opens the settings window, or focuses it when it is already open.
 ///
 /// Async on purpose: sync commands run on the main thread, and building a
 /// webview window there deadlocks on Windows (tauri#4121).
@@ -243,29 +241,55 @@ pub async fn open_settings_window(app: AppHandle, title: String) -> Result<(), S
         return win.set_focus().map_err(|e| e.to_string());
     }
 
-    let win = tauri::WebviewWindowBuilder::new(
+    let builder = tauri::WebviewWindowBuilder::new(
         &app,
         SETTINGS_WINDOW_LABEL,
         tauri::WebviewUrl::App("index.html#/settings".into()),
     )
     .title(title)
     .inner_size(1000.0, 680.0)
-    .min_inner_size(820.0, 560.0)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .effects(EffectsBuilder::new().effect(Effect::Acrylic).build())
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
+    .min_inner_size(820.0, 560.0);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .traffic_light_position(tauri::LogicalPosition::new(32.0, 37.0))
+        .hidden_title(true)
+        .visible(false)
+        .transparent(true)
+        .shadow(true)
+        .effects(EffectsBuilder::new().effect(Effect::Acrylic).build());
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .effects(EffectsBuilder::new().effect(Effect::Acrylic).build());
+
+    let win = builder.center().build().map_err(|e| e.to_string())?;
     // AppKit calls must run on the main thread.
     let styled = win.clone();
     app.run_on_main_thread(move || {
-        apply_macos_vibrancy(&styled);
+        apply_macos_vibrancy(&styled, None);
         apply_rounded_corners(&styled);
     })
     .map_err(|e| e.to_string())?;
-
+    #[cfg(target_os = "macos")]
+    crate::macos_window::disable_fullscreen(&win.as_ref().window())?;
+    #[cfg(target_os = "macos")]
+    win.with_webview(|webview| {
+        use objc::runtime::{Class, Object};
+        use objc::{msg_send, sel, sel_impl};
+        unsafe {
+            if let Some(color) = Class::get("NSColor") {
+                let clear: *mut Object = msg_send![color, clearColor];
+                let view = webview.inner() as *mut Object;
+                let _: () = msg_send![view, setUnderPageBackgroundColor: clear];
+            }
+        }
+    }).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    crate::macos_window::apply_to_window(&win.as_ref().window(), crate::macos_window::Mode::Full)?;
     // The settings page streams the spectrum while it is visible; a closed
     // window cannot turn that off itself.
     let handle = app.clone();
@@ -307,23 +331,21 @@ pub fn hide_main_window(app: AppHandle) -> Result<(), String> {
 /// Toggle Dock visibility with the main window.
 #[cfg(target_os = "macos")]
 fn set_macos_dock_mode(app: &AppHandle, window_visible: bool) -> Result<(), String> {
-    let (policy, dock_visible) = if window_visible {
-        (tauri::ActivationPolicy::Regular, true)
+    let policy = if window_visible {
+        tauri::ActivationPolicy::Regular
     } else {
-        (tauri::ActivationPolicy::Accessory, false)
+        tauri::ActivationPolicy::Accessory
     };
     app.set_activation_policy(policy)
-        .map_err(|e| format!("failed to change macOS activation policy: {e}"))?;
-    app.set_dock_visibility(dock_visible)
-        .map_err(|e| format!("failed to change macOS Dock visibility: {e}"))
+        .map_err(|e| format!("failed to change macOS activation policy: {e}"))
 }
 
 /// Places the macOS traffic lights for the active header layout. No-op elsewhere.
 #[tauri::command]
-pub fn apply_macos_window_layout(app: AppHandle, mode: String) -> Result<(), String> {
+pub fn apply_macos_window_layout(app: AppHandle, mode: String, center_y: Option<f64>, inset_x: Option<f64>) -> Result<(), String> {
     let mode = crate::macos_window::Mode::parse(&mode);
     let win = main_window(&app)?;
-    crate::macos_window::apply(&win.as_ref().window(), mode)
+    crate::macos_window::apply_measured(&win.as_ref().window(), mode, center_y, inset_x)
 }
 
 /// Sets the macOS Dock badge label (`None` clears it). No-op elsewhere.

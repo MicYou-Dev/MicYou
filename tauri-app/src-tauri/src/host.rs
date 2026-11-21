@@ -57,7 +57,7 @@ impl HostIntegration for TauriHost {
         if let Some(window) = self.0.get_webview_window(&label) {
             return window.set_focus().map_err(|e| e.to_string());
         }
-        WebviewWindowBuilder::new(
+        let builder = WebviewWindowBuilder::new(
             &self.0,
             &label,
             WebviewUrl::App(format!("index.html#/plugin/{plugin_id}/{panel_id}").into()),
@@ -66,9 +66,12 @@ impl HostIntegration for TauriHost {
         .inner_size(520.0, 720.0)
         .min_inner_size(360.0, 480.0)
         .decorations(false)
-        .transparent(true)
-        .build()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .transparent(true);
+        #[cfg(target_os = "macos")]
+        let builder = builder.visible(false);
+        builder
+            .build()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 }

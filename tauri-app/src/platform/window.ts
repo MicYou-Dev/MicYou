@@ -17,6 +17,10 @@ export function hideCurrentWindow(): Promise<void> {
   return getCurrentWindow().hide();
 }
 
+export function showCurrentWindow(): Promise<void> {
+  return getCurrentWindow().show();
+}
+
 export function startDragging(): Promise<void> {
   return getCurrentWindow().startDragging();
 }

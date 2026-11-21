@@ -85,7 +85,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(win) = app.get_webview_window("main") {
-        window::apply_macos_vibrancy(&win);
+        window::apply_macos_vibrancy(&win, Some(16.0));
         window::apply_rounded_corners(&win);
         // The window config leaves the control position unset so AppKit
         // cannot override the per-layout placement, which means the
@@ -121,18 +121,17 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_notification::init())
         .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
             let is_main_window = window.label() == "main";
 
-            // This listener fires for every window the app creates, but only the
-            // main window carries the in-app header these controls are aligned to,
-            // so other windows must keep the placement AppKit gives them.
-            if is_main_window
-                && matches!(
-                    event,
-                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_)
-                )
-            {
-                crate::macos_window::reapply(window);
+            #[cfg(target_os = "macos")]
+            if matches!(
+                event,
+                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_)
+            ) {
+                if is_main_window {
+                    crate::macos_window::reapply(window);
+                }
             }
 
             // The native close button has to keep the existing hide-to-tray /
