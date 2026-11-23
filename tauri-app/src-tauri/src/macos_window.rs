@@ -25,10 +25,11 @@
 pub struct LayoutMetrics {
     pub inset_x: f64,
     pub inset_y: f64,
+    pub center_y: Option<f64>,
 }
 
-pub const FULL: LayoutMetrics = LayoutMetrics { inset_x: 32.0, inset_y: 37.0 };
-pub const POCKET: LayoutMetrics = LayoutMetrics { inset_x: 24.0, inset_y: 24.0 };
+pub const FULL: LayoutMetrics = LayoutMetrics { inset_x: 32.0, inset_y: 37.0, center_y: None };
+pub const POCKET: LayoutMetrics = LayoutMetrics { inset_x: 24.0, inset_y: 24.0, center_y: None };
 
 /// Which header layout the window currently shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,6 +94,9 @@ mod imp {
     const CLOSE_BUTTON: usize = 0;
     const MINIATURIZE_BUTTON: usize = 1;
     const ZOOM_BUTTON: usize = 2;
+    const FULL_SCREEN_PRIMARY: usize = 1 << 7;
+    const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
+    const FULL_SCREEN_NONE: usize = 1 << 9;
 
     /// AppKit snaps to physical pixels; anything under half a point is noise.
     const EPSILON: f64 = 0.5;
@@ -104,15 +108,54 @@ mod imp {
     }
 
     /// Layout the UI last asked for, replayed after AppKit relayouts.
-    static CURRENT: Mutex<Option<Mode>> = Mutex::new(None);
+    static CURRENT: Mutex<Option<LayoutMetrics>> = Mutex::new(None);
 
     /// Records `mode` as the layout to keep, then schedules the placement. The
     /// placement itself runs on the main thread after this returns, so an `Err`
     /// only reports that it could not be scheduled; a placement that fails there
     /// is logged instead of returned.
     pub fn apply(window: &tauri::Window, mode: Mode) -> Result<(), String> {
-        *CURRENT.lock().map_err(|e| e.to_string())? = Some(mode);
+        apply_measured(window, mode, None, None)
+    }
+
+    pub fn apply_measured(window: &tauri::Window, mode: Mode, center_y: Option<f64>, inset_x: Option<f64>) -> Result<(), String> {
+        let mut metrics = mode.metrics();
+        if let Some(center) = center_y.filter(|value| value.is_finite() && *value >= 16.0 && *value <= 160.0) {
+            metrics.center_y = Some(center);
+        }
+        if let Some(left) = inset_x.filter(|value| value.is_finite() && *value >= 12.0 && *value <= 160.0) {
+            metrics.inset_x = left;
+        }
+        *CURRENT.lock().map_err(|e| e.to_string())? = Some(metrics);
+        run_on_main(window, metrics)
+    }
+
+    /// Applies a one-off layout without changing the main window's saved mode.
+    pub fn apply_to_window(window: &tauri::Window, mode: Mode) -> Result<(), String> {
         run_on_main(window, mode.metrics())
+    }
+
+    /// Prevents a settings window from entering macOS full-screen mode.
+    pub fn disable_fullscreen(window: &tauri::Window) -> Result<(), String> {
+        let handle = window.clone();
+        let inner = handle.clone();
+        handle
+            .run_on_main_thread(move || match inner.ns_window() {
+                Ok(ptr) if !ptr.is_null() => unsafe {
+                    let ns_window = ptr as *mut Object;
+                    let behavior: usize = msg_send![ns_window, collectionBehavior];
+                    let behavior = (behavior & !(FULL_SCREEN_PRIMARY | FULL_SCREEN_AUXILIARY))
+                        | FULL_SCREEN_NONE;
+                    let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+                    let zoom: *mut Object = msg_send![ns_window, standardWindowButton: ZOOM_BUTTON];
+                    if !zoom.is_null() {
+                        let _: () = msg_send![zoom, setHidden: true];
+                    }
+                },
+                Ok(_) => log::warn!(target: "window", "fullscreen restriction: no NSWindow"),
+                Err(e) => log::warn!(target: "window", "fullscreen restriction: {e}"),
+            })
+            .map_err(|e| e.to_string())
     }
 
     /// Re-applies the last requested layout. Resizing the window makes AppKit
@@ -120,8 +163,8 @@ mod imp {
     /// layout has to be written again afterwards.
     pub fn reapply(window: &tauri::Window) {
         let mode = CURRENT.lock().ok().and_then(|current| *current);
-        if let Some(mode) = mode {
-            let _ = run_on_main(window, mode.metrics());
+        if let Some(metrics) = mode {
+            let _ = run_on_main(window, metrics);
         }
     }
 
@@ -180,7 +223,10 @@ mod imp {
                 return Err(format!("unexpected traffic light spacing ({pitch})"));
             }
 
-            let target_height = close_rect.size.height + metrics.inset_y;
+            let target_height = match metrics.center_y {
+                Some(center) => center + close_rect.origin.y + close_rect.size.height / 2.0,
+                None => close_rect.size.height + metrics.inset_y,
+            };
             let window_rect: CGRect = msg_send![ns_window, frame];
             let target_container_y = window_rect.size.height - target_height;
 
@@ -207,12 +253,17 @@ mod imp {
                 let _: () = msg_send![button, setFrameOrigin: origin];
             }
 
+            let _: () = msg_send![zoom, setHidden: true];
+
             Ok(())
         }
     }}
 
 #[cfg(target_os = "macos")]
-pub use imp::{apply, reapply};
+pub use imp::{apply, apply_measured, disable_fullscreen, reapply};
+
+#[cfg(target_os = "macos")]
+pub use imp::apply_to_window;
 
 /// Other platforms already place the controls correctly.
 #[cfg(not(target_os = "macos"))]
@@ -222,6 +273,11 @@ pub fn apply(_window: &tauri::Window, _mode: Mode) -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn reapply(_window: &tauri::Window) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn apply_to_window(_window: &tauri::Window, _mode: Mode) -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -259,4 +315,9 @@ mod tests {
         assert!(!super::imp::spacing_is_usable(-20.0));
         assert!(super::imp::spacing_is_usable(20.0));
     }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn apply_measured(_window: &tauri::Window, _mode: Mode, _center_y: Option<f64>, _inset_x: Option<f64>) -> Result<(), String> {
+    Ok(())
 }

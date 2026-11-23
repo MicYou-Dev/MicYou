@@ -4,9 +4,11 @@
  * 由 open_plugin_window 命令创建，hash 路由 #/plugin/:pluginId/:panelId
  * 复用设置对话框的面板渲染逻辑（沙箱 iframe + postMessage 桥 + 主题注入）
  */
+import MacOSWindowSurface from '@/shared/components/MacOSWindowSurface.vue';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { buildPanelDocument, usePluginPanelBridge } from '../composables/usePluginPanelBridge';
 import { appWindow, command } from '@/platform';
+import { isMacOS } from '@/shared/lib/os';
 import { useWindowTransition } from '@/features/window/composables/useWindowTransition';
 
 const hash = window.location.hash; // #/plugin/<pluginId>/<panelId>
@@ -34,7 +36,8 @@ async function load() {
 }
 
 const windowRoot = ref<HTMLElement | null>(null);
-const transition = useWindowTransition(windowRoot);
+const windowContent = ref<HTMLElement | null>(null);
+const transition = useWindowTransition(isMacOS ? windowContent : windowRoot);
 
 let closing = false;
 async function closeWindow() {
@@ -44,9 +47,13 @@ async function closeWindow() {
   await appWindow.destroyCurrentWindow().catch((e) => console.error('Closing panel failed:', e));
 }
 
-onMounted(() => {
-  void transition.enter();
+onMounted(async () => {
+  if (!isMacOS) void transition.enter();
   window.addEventListener('message', handleMessage);
+  if (isMacOS) {
+    await appWindow.showCurrentWindow();
+    void transition.enter();
+  }
   void load();
 });
 onUnmounted(() => window.removeEventListener('message', handleMessage));
@@ -57,6 +64,10 @@ onUnmounted(() => window.removeEventListener('message', handleMessage));
     ref="windowRoot"
     class="h-screen w-screen overflow-hidden rounded-2xl flex flex-col origin-center"
     style="background: hsl(var(--surface))"
+  >
+  <MacOSWindowSurface
+    :element-ref="el => windowContent = el"
+    surface-class="h-screen w-screen overflow-hidden rounded-2xl flex flex-col origin-center"
   >
     <header
       data-tauri-drag-region
@@ -105,5 +116,6 @@ onUnmounted(() => window.removeEventListener('message', handleMessage));
         style="border-color: hsl(var(--border)); background: hsl(var(--surface))"
       ></iframe>
     </div>
+  </MacOSWindowSurface>
   </div>
 </template>

@@ -3,22 +3,26 @@
     ref="windowRoot"
     data-drag-surface
     class="settings-panel settings-window relative isolate origin-center"
+    :class="{ 'settings-window-native': isMacOS }"
     @mousedown="startDrag"
   >
     <!-- Window background; also the compositor blur region in glass style -->
     <div
       data-blur-region
       class="absolute inset-0 -z-10 rounded-2xl bg-surface-container pointer-events-none"
+      :class="{ 'rounded-none': isMacOS }"
     ></div>
     <button
+      v-if="!isMacOS"
       @click="closeWindow"
       class="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-surface-variant/40 hover:bg-surface-variant/80 flex items-center justify-center transition-colors"
     >
       <X class="w-5 h-5 text-on-surface" />
     </button>
 
+    <MacOSWindowSurface surface-class="settings-window-content" :element-ref="el => windowContent = el">
     <!-- Left Sidebar -->
-    <div class="settings-nav gap-2">
+    <div class="settings-nav gap-2" :class="{ 'settings-nav-native': isMacOS }">
       <div class="px-4 py-4 mb-4 flex items-center gap-3">
         <SettingsIcon class="w-6 h-6 text-primary" />
         <h2 class="text-xl font-bold text-primary">{{ $t('settings.title') }}</h2>
@@ -87,6 +91,7 @@
         </Transition>
       </div>
     </div>
+    </MacOSWindowSurface>
   </div>
 
   <!-- Restore defaults: confirm dialog -->
@@ -151,6 +156,7 @@
 </template>
 
 <script setup lang="ts">
+import MacOSWindowSurface from '@/shared/components/MacOSWindowSurface.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
@@ -165,7 +171,7 @@ import {
 } from '@lucide/vue';
 import { appWindow, onEvent } from '@/platform';
 import { useListeners } from '@/shared/lib/listeners';
-import { applyPlatformClasses } from '@/shared/lib/os';
+import { applyPlatformClasses, isMacOS } from '@/shared/lib/os';
 import EqualizerPanel from '@/features/audio/components/EqualizerPanel.vue';
 import PluginsPanel from '@/features/plugins/components/PluginsPanel.vue';
 import { useTheme } from '@/features/theme/composables/useTheme';
@@ -185,6 +191,7 @@ import PluginPanelSection from './sections/PluginPanelSection.vue';
 // Settings live in their own window (#/settings); see useAudioSettings for how
 // the main window learns about output device changes.
 applyPlatformClasses();
+if (isMacOS) document.documentElement.classList.add('settings-document-native');
 const { t, locale } = useI18n();
 const { uiStyle } = useTheme();
 const windowEffects = useWindowEffects({
@@ -192,7 +199,8 @@ const windowEffects = useWindowEffects({
   shadowRadius: ref(16),
 });
 const windowRoot = ref<HTMLElement | null>(null);
-const transition = useWindowTransition(windowRoot, { suspendEffects: windowEffects.suspend });
+const windowContent = ref<HTMLElement | null>(null);
+const transition = useWindowTransition(isMacOS ? windowContent : windowRoot, { suspendEffects: windowEffects.suspend });
 
 const { settings, loadSettings } = useAudioSettings();
 const { saveUiPrefs } = useLanguageSetting();
@@ -274,11 +282,13 @@ watch(currentSection, () => contentRef.value?.scrollTo({ top: 0 }));
 const track = useListeners();
 onMounted(async () => {
   await windowEffects.apply();
-  void transition.enter();
+  if (!isMacOS) void transition.enter();
   await track(appWindow.onCloseRequested(() => void closeWindow()));
   await track(onEvent('settings-window-shown', () => {
     if (hidden) void reopen();
   }));
+  if (isMacOS && !hidden) await appWindow.showCurrentWindow();
+  if (isMacOS) void transition.enter();
   saveUiPrefs();
   // Plugin pages show in the sidebar before the plugins section is opened.
   void refreshPlugins();
