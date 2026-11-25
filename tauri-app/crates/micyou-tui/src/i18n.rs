@@ -156,6 +156,7 @@ const ZH: Dict = Dict {
         ("staged_hint", "更改模式/端口后需重启生效"),
         ("level_overflow", "电平过高"),
     ],
+    ("battery", "电量"),
 };
 
 const EN: Dict = Dict {
@@ -250,6 +251,7 @@ const EN: Dict = Dict {
         ("staged_hint", "Mode/port changes require a restart"),
         ("level_overflow", "Level too high"),
     ],
+    ("battery", "Battery"),
 };
 
 const CAT: Dict = Dict {
@@ -341,6 +343,7 @@ const CAT: Dict = Dict {
         ("staged_hint", "更改模式/端口后需重启生效喵~"),
         ("level_overflow", "电平过高"),
     ],
+    ("battery", "Bateria"),
 };
 
 const LZH: Dict = Dict {
@@ -423,6 +426,7 @@ const LZH: Dict = Dict {
         ("staged_hint", "改模式/端口后需重启"),
         ("level_overflow", "电平过高"),
     ],
+    ("battery", "電量"),
 };
 
 const ZH_HK: Dict = Dict {
@@ -505,6 +509,7 @@ const ZH_HK: Dict = Dict {
         ("staged_hint", "改模式/埠之後要重啟先得"),
         ("level_overflow", "電平過高"),
     ],
+    ("battery", "電量"),
 };
 
 const ZH_SS: Dict = Dict {
@@ -593,6 +598,7 @@ const ZH_SS: Dict = Dict {
         ("staged_hint", "更改模式/端口后需重启生效"),
         ("level_overflow", "电平过高"),
     ],
+    ("battery", "电量"),
 };
 
 const ZH_TW: Dict = Dict {
@@ -681,6 +687,7 @@ const ZH_TW: Dict = Dict {
         ("staged_hint", "變更模式/連接埠後需重新啟動"),
         ("level_overflow", "電平過高"),
     ],
+    ("battery", "電量"),
 };
 
 fn dict_for(lang: &str) -> &'static Dict {

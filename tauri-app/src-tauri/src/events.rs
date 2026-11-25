@@ -16,7 +16,7 @@
 //! Forwards core server events to the webview.
 
 use micyou_core::events::{AecStatus, DownloadProgress, ServerEvents, SpectrumPayload};
-use micyou_core::stats::AudioMetrics;
+use micyou_core::stats::{AudioMetrics, BatteryStatus};
 use micyou_core::transport::tcp::DeviceInfo;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -37,6 +37,9 @@ impl ServerEvents for TauriEventSink {
     }
     fn device_disconnected(&self) {
         self.emit("device-disconnected", ());
+    }
+    fn client_battery(&self, battery: Option<BatteryStatus>) {
+        self.emit("client-battery", battery);
     }
     fn audio_metrics(&self, metrics: AudioMetrics) {
         self.emit("audio-metrics", metrics);

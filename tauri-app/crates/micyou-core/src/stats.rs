@@ -14,8 +14,17 @@
  */
 
 use serde::Serialize;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+
+/// Battery state reported by the connected phone. `level` is 0-100, or a
+/// negative value when the client could not read its charge.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BatteryStatus {
+    pub level: i32,
+    pub charging: bool,
+}
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +56,11 @@ pub struct NetworkStats {
     pub channels: AtomicU32,
     pub input_level_bits: AtomicU32,
     pub processed_level_bits: AtomicU32,
+    /// Battery reported by the phone (`ClientStatusMessage`); -1 = unknown.
+    /// Cleared on every session boundary so a reconnect never inherits the
+    /// previous device's charge.
+    pub battery_level: AtomicI32,
+    pub battery_charging: AtomicBool,
 }
 
 impl Default for NetworkStats {
@@ -64,6 +78,8 @@ impl Default for NetworkStats {
             channels: AtomicU32::new(0),
             input_level_bits: AtomicU32::new(0f32.to_bits()),
             processed_level_bits: AtomicU32::new(0f32.to_bits()),
+            battery_level: AtomicI32::new(-1),
+            battery_charging: AtomicBool::new(false),
         }
     }
 }
@@ -116,6 +132,7 @@ impl NetworkStats {
         self.tcp_connected_time_ms.store(time_ms, Ordering::Relaxed);
         self.last_udp_packet_time_ms.store(0, Ordering::Relaxed);
         self.last_audio_packet_time_ms.store(0, Ordering::Relaxed);
+        self.clear_battery();
     }
     pub fn mark_tcp_disconnected(&self) {
         self.tcp_connected_time_ms.store(0, Ordering::Relaxed);
@@ -124,6 +141,7 @@ impl NetworkStats {
         self.loss_rate_bits.store(0f64.to_bits(), Ordering::Relaxed);
         self.jitter_bits.store(0f64.to_bits(), Ordering::Relaxed);
         self.rtt_ms.store(0, Ordering::Relaxed);
+        self.clear_battery();
     }
     pub fn get_tcp_connected_time(&self) -> u64 {
         self.tcp_connected_time_ms.load(Ordering::Relaxed)
@@ -152,6 +170,25 @@ impl NetworkStats {
     pub fn set_levels(&self, input: f32, processed: f32) {
         self.input_level_bits.store(input.to_bits(), Ordering::Relaxed);
         self.processed_level_bits.store(processed.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn set_battery(&self, level: i32, charging: bool) {
+        self.battery_level.store(level, Ordering::Relaxed);
+        self.battery_charging.store(charging, Ordering::Relaxed);
+    }
+
+    /// Battery reported by the phone, or `None` until it sends a usable level.
+    pub fn battery(&self) -> Option<BatteryStatus> {
+        let level = self.battery_level.load(Ordering::Relaxed);
+        (0..=100).contains(&level).then(|| BatteryStatus {
+            level,
+            charging: self.battery_charging.load(Ordering::Relaxed),
+        })
+    }
+
+    pub fn clear_battery(&self) {
+        self.battery_level.store(-1, Ordering::Relaxed);
+        self.battery_charging.store(false, Ordering::Relaxed);
     }
 
     pub fn to_metrics(&self, buffer_duration: i64) -> AudioMetrics {
@@ -355,5 +392,34 @@ mod tests {
         assert_eq!(stats.get_last_audio_time(), 0);
         assert_eq!(stats.get_loss_rate(), 0.0);
         assert_eq!(stats.get_jitter(), 0.0);
+    }
+
+    #[test]
+    fn battery_reports_valid_levels_and_resets_between_sessions() {
+        let stats = NetworkStats::default();
+        assert_eq!(stats.battery(), None, "no report yet");
+
+        stats.set_battery(78, true);
+        assert_eq!(
+            stats.battery(),
+            Some(BatteryStatus {
+                level: 78,
+                charging: true
+            })
+        );
+
+        // A nonsense level stays "unknown" instead of being clamped into a lie.
+        stats.set_battery(120, false);
+        assert_eq!(stats.battery(), None);
+
+        stats.set_battery(4, false);
+        assert_eq!(stats.battery().map(|b| b.level), Some(4));
+
+        stats.mark_tcp_disconnected();
+        assert_eq!(stats.battery(), None, "cleared on disconnect");
+
+        stats.set_battery(40, true);
+        stats.mark_tcp_connected(1);
+        assert_eq!(stats.battery(), None, "cleared on connect");
     }
 }

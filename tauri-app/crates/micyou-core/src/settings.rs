@@ -106,6 +106,9 @@ pub struct StreamingStatus {
     pub is_connected: bool,
     pub is_muted: bool,
     pub platform: crate::transport::tcp::ClientPlatform,
+    /// Battery reported by the connected phone. `None` when nothing is
+    /// connected, the client is legacy, or it could not read its charge.
+    pub battery: Option<crate::stats::BatteryStatus>,
 }
 
 /// Handles on the live server state that runtime controls act on.
@@ -301,6 +304,7 @@ impl ServerState {
             is_connected: control_platform.is_some() || audio_active || web_connected,
             is_muted: self.network_stats.is_muted(),
             platform: control_platform.unwrap_or_default(),
+            battery: self.network_stats.battery(),
         }
     }
 }
@@ -310,7 +314,7 @@ mod tests {
     use crate::events::{AecStatus, DownloadProgress, ServerEvents, SpectrumPayload};
     use crate::host::{HostIntegration, HotkeyCallback};
     use crate::server::ServerState;
-    use crate::stats::AudioMetrics;
+    use crate::stats::{AudioMetrics, BatteryStatus};
     use crate::transport::tcp::{ActiveConnection, DeviceInfo};
     use std::sync::Arc;
     use std::time::Duration;
@@ -321,6 +325,7 @@ mod tests {
     impl ServerEvents for NoEvents {
         fn device_connected(&self, _: DeviceInfo) {}
         fn device_disconnected(&self) {}
+        fn client_battery(&self, _: Option<BatteryStatus>) {}
         fn audio_metrics(&self, _: AudioMetrics) {}
         fn udp_audio_warning(&self) {}
         fn mute_state_changed(&self, _: bool) {}

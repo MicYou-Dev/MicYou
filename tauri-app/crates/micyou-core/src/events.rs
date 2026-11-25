@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  */
 
-use crate::stats::AudioMetrics;
+use crate::stats::{AudioMetrics, BatteryStatus};
 use crate::transport::tcp::DeviceInfo;
 use std::sync::Arc;
 
@@ -25,6 +25,9 @@ use std::sync::Arc;
 pub trait ServerEvents: Send + Sync + 'static {
     fn device_connected(&self, info: DeviceInfo);
     fn device_disconnected(&self);
+    /// Battery reported by the connected phone. `None` clears it (device
+    /// disconnected, or the phone could not read its charge).
+    fn client_battery(&self, battery: Option<BatteryStatus>);
     fn audio_metrics(&self, metrics: AudioMetrics);
     fn udp_audio_warning(&self);
     fn mute_state_changed(&self, is_muted: bool);
