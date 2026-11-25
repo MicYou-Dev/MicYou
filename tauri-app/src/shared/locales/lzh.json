@@ -13,6 +13,8 @@
       "streamingDesc": "装置已通矣。",
       "streamingDescAndroid": "安卓装置已通矣。",
       "streamingDescIos": "iOS 装置已通矣。",
+      "battery": "電量 {level}%",
+      "charging": "充電中",
       "connectingDesc": "监听端口 {port} 中",
       "startingDesc": "音频服务正始化，且稍候。",
       "readyDesc": "点启以候连接。",

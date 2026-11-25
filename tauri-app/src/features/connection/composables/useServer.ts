@@ -11,6 +11,7 @@ import {
   notify,
   onEvent,
   type AdbDevice,
+  type BatteryStatus,
   type ClientPlatform,
   type NetworkInfo,
   type NetworkInterfaceInfo,
@@ -106,6 +107,10 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
 
   // Platform of the connected phone, reported in its Connect message
   const clientPlatform = ref<ClientPlatform>('unknown');
+
+  // Battery the connected phone reported; null when it is unknown or a
+  // legacy client never sends one.
+  const deviceBattery = ref<BatteryStatus | null>(null);
 
   // Computes the display representation of the active bind IP address
   const displayIp = computed(() => {
@@ -250,6 +255,7 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
       const status = await command('get_streaming_status').catch(() => null);
       if (status?.isConnected) {
         clientPlatform.value = status.platform;
+        deviceBattery.value = status.battery ?? null;
         ensureStreamingState();
       } else if (serverState.value === 'starting') {
         serverState.value = 'connecting';
@@ -398,6 +404,8 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
 
   function onDeviceDisconnected() {
     if (serverState.value !== 'streaming' && serverState.value !== 'connecting') return;
+    // The charge belongs to the device that just left.
+    deviceBattery.value = null;
     const wasStreaming = serverState.value === 'streaming';
     const mode = activeConnectionMode.value || connectionMode.value;
     if (mode === 'usb') {
@@ -426,9 +434,15 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
         ensureStreamingState();
       })),
       track(onEvent('device-disconnected', onDeviceDisconnected)),
+      // Battery reports arrive after the handshake and on every change.
+      track(onEvent('client-battery', (battery) => {
+        deviceBattery.value = battery;
+        if (battery) healPendingStart();
+      })),
       // Stops triggered elsewhere (tray, plugins, another window)
       track(onEvent('server-stopped', () => {
         resetToIdle();
+        deviceBattery.value = null;
         if (options?.isMuted) options.isMuted.value = false;
       })),
       // Metrics only flow while a TCP session is up
@@ -488,6 +502,7 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
       if (status.isServerRunning) {
         serverState.value = status.isConnected ? 'streaming' : 'connecting';
         clientPlatform.value = status.platform;
+        deviceBattery.value = status.battery ?? null;
         activeConnectionMode.value = connectionMode.value;
         activePort.value = portFor(connectionMode.value);
         if (options?.isMuted) {
@@ -518,6 +533,8 @@ export function useServer(options?: { audioLevel?: Ref<number>; isMuted?: Ref<bo
     isAutoBind,
     displayIp,
     statusDescription,
+    clientPlatform,
+    deviceBattery,
     showDeviceSelector,
     adbDevices,
     pendingUsbPort,

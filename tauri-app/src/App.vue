@@ -8,7 +8,8 @@ import { useI18n } from 'vue-i18n';
 import { 
   Mic, Wifi, RadioTower, Globe, ChevronDown, CheckCircle2, Settings, 
   Link, Unlink, RefreshCw, ActivitySquare as MonitoringIcon, X, Minus, 
-  VolumeX, Volume2, Headphones, QrCode as QrCodeIcon, Loader2 
+  VolumeX, Volume2, Headphones, QrCode as QrCodeIcon, Loader2,
+  BatteryCharging, BatteryMedium
 } from '@lucide/vue';
 
 // Composables managing server connection, audio, theme, window, and system tray
@@ -686,6 +687,19 @@ onUnmounted(() => {
               <p class="text-xs text-on-surface-variant mt-1 max-w-[200px] mx-auto">
                 {{ server.statusDescription.value }}
               </p>
+              <!-- 手机上报的电量；旧客户端不发就整块隐藏 -->
+              <div
+                v-if="server.deviceBattery.value"
+                class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors duration-300"
+                :class="server.deviceBattery.value.charging
+                  ? 'bg-primary/10 text-primary'
+                  : (server.deviceBattery.value.level <= 20 ? 'bg-error/10 text-error' : 'bg-surface-variant/60 text-on-surface-variant')"
+              >
+                <BatteryCharging v-if="server.deviceBattery.value.charging" class="w-3.5 h-3.5" />
+                <BatteryMedium v-else class="w-3.5 h-3.5" />
+                <span>{{ $t('app.status.battery', { level: server.deviceBattery.value.level }) }}</span>
+                <span v-if="server.deviceBattery.value.charging">{{ $t('app.status.charging') }}</span>
+              </div>
             </div>
           </div>
         </div>

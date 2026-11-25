@@ -13,6 +13,8 @@
       "streamingDesc": "Connected to device successfully.",
       "streamingDescAndroid": "Connected to Android device successfully.",
       "streamingDescIos": "Connected to iOS device successfully.",
+      "battery": "Battery {level}%",
+      "charging": "Charging",
       "connectingDesc": "Listening on port {port}",
       "startingDesc": "Initializing audio service, please wait.",
       "readyDesc": "Click start to wait for connections.",

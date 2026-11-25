@@ -1,5 +1,5 @@
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { AecStatus, AudioMetrics, DeviceInfo, PluginDownloadProgress, SpectrumPayload } from './types';
+import type { AecStatus, AudioMetrics, BatteryStatus, DeviceInfo, PluginDownloadProgress, SpectrumPayload } from './types';
 
 export type { UnlistenFn };
 
@@ -7,6 +7,8 @@ export type { UnlistenFn };
 export interface AppEvents {
   'device-connected': DeviceInfo;
   'device-disconnected': unknown;
+  /** Battery of the connected phone; null clears it. */
+  'client-battery': BatteryStatus | null;
   'server-stopped': unknown;
   'audio-level': number;
   'audio-metrics': AudioMetrics;

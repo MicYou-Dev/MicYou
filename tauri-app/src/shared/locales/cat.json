@@ -13,6 +13,8 @@
       "streamingDesc": "已成功连接设备喵~",
       "streamingDescAndroid": "已成功连接安卓设备喵~",
       "streamingDescIos": "已成功连接 iOS 设备喵~",
+      "battery": "Bateria {level}%",
+      "charging": "S'carregant",
       "connectingDesc": "正在监听端口 {port} 喵~",
       "startingDesc": "正在初始化音频服务喵，请稍等~",
       "readyDesc": "点击开始等待连接喵~",
