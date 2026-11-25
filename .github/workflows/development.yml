@@ -8,6 +8,40 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ----------------- Rust 单元测试 + clippy -----------------
+  # 本仓库的验证都在 GitHub runner 上做；下面的构建任务只保证「能编译」，
+  # 真正的单元测试与 lint 由这个任务负责。
+  test-rust:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup Rust (stable)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - name: Cache Rust
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: tauri-app -> target
+        cache-on-failure: true
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev \
+          patchelf \
+          libxdo-dev \
+          libssl-dev \
+          libasound2-dev
+    - name: cargo test
+      run: cargo test --workspace
+      working-directory: tauri-app
+    - name: cargo clippy
+      run: cargo clippy --workspace --all-targets
+      working-directory: tauri-app
+
   # ----------------- Android Debug 构建 -----------------
   build-android:
     runs-on: ubuntu-latest
