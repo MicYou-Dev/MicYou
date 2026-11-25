@@ -25,7 +25,7 @@ flowchart LR
 ## Wire protocol
 
 - Source of truth: `tauri-app/crates/micyou-protocol/proto/network.proto` (prost); the Android mirror is `composeApp/.../network/Protocol.kt` and must stay in sync, magics included (`0x4D696359` control, `0x4D696355` audio)
-- TCP carries control frames (connect, mute, ping, pong, and desktop-to-phone stats once a second) with a 1 MiB payload cap enforced on both sides; `connect.platform` tells iOS and Android apart
+- TCP carries control frames (connect, mute, ping, pong, desktop-to-phone stats once a second, phone-to-desktop battery reports) with a 1 MiB payload cap enforced on both sides; `connect.platform` tells iOS and Android apart
 - UDP carries audio on TCP port + 1; Opus uses 20 ms frames with one FEC packet per group of 12
 - Connection modes: **wifi** (LAN, mDNS `_micyou._tcp.`), **usb** (`adb reverse` for Android; for iOS `platform/usbmux.rs` polls usbmuxd and connects to the app listening on the phone, then splices it into the local server; either way connections arrive on loopback, so USB mode listens on 127.0.0.1 only, ignores the saved bind interface and skips mDNS), **web** (axum TLS WebSocket, feature-gated)
 

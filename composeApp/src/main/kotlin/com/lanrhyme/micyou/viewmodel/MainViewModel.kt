@@ -154,6 +154,13 @@ class MainViewModel : ViewModel() {
     private val soundPadController = SoundPadController(audioStreamViewModel.audioEngine, viewModelScope)
     val soundPadState: StateFlow<SoundPadUiState> = soundPadController.state
 
+    // 手机端链路质量：桌面端每秒回传一次（StatsMessage），旧桌面不发则为 null
+    val linkQuality = audioStreamViewModel.audioEngine.linkQuality
+
+    // 链路质量面板是否展开（仅在播放中可用）
+    private val _linkPanelOpen = MutableStateFlow(false)
+    val linkPanelOpen: StateFlow<Boolean> = _linkPanelOpen.asStateFlow()
+
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
@@ -182,6 +189,15 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             audioStreamViewModel.isDiscovering.collect { discovering ->
                 _uiState.update { it.copy(isDiscovering = discovering) }
+            }
+        }
+
+        // 断流后自动收起链路质量面板
+        viewModelScope.launch {
+            audioStreamViewModel.audioEngine.streamState.collect { streamState ->
+                if (streamState != StreamState.Streaming && _linkPanelOpen.value) {
+                    _linkPanelOpen.value = false
+                }
             }
         }
 
@@ -345,7 +361,11 @@ class MainViewModel : ViewModel() {
 
     // Soundpad methods (delegate to SoundPadController)
     fun toggleSoundPadPanel() = soundPadController.togglePanel()
-    fun soundPadPlay(soundId: String) = soundPadController.play(soundId)
+
+    /** 展开/收起手机端的链路质量面板。 */
+    fun toggleLinkPanel() {
+        _linkPanelOpen.value = !_linkPanelOpen.value
+    }    fun soundPadPlay(soundId: String) = soundPadController.play(soundId)
     fun soundPadStop(sessionId: Long? = null) = soundPadController.stop(sessionId)
     fun soundPadSeek(sessionId: Long, positionMs: Long) = soundPadController.seek(sessionId, positionMs)
     fun soundPadSetVolume(sessionId: Long, volume: Float) = soundPadController.setVolume(sessionId, volume)
