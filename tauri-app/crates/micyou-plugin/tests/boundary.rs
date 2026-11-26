@@ -54,6 +54,7 @@ impl HostApi for TestHost {
             processed_level: 0.0,
             queued_ms: 0.0,
             muted: false,
+            battery: None,
         }
     }
     fn play_sound(&self, _p: &str) -> PluginResult<()> {

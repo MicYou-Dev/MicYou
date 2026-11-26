@@ -19,7 +19,7 @@ use super::{lock_err, PluginHost};
 use crate::transport::udp::ActiveAudioSession;
 use micyou_plugin::bus::PluginMessage;
 use micyou_plugin::host::{
-    AudioStateSnapshot, DeviceSnapshot, HostApi, MessageTarget, PluginLogLevel,
+    AudioStateSnapshot, BatterySnapshot, DeviceSnapshot, HostApi, MessageTarget, PluginLogLevel,
 };
 use micyou_plugin::{PluginError, PluginResult};
 use std::collections::HashMap;
@@ -204,6 +204,7 @@ impl HostApi for PluginHostApi {
             processed_level: f32::from_bits(stats.processed_level_bits.load(Ordering::Relaxed)),
             queued_ms,
             muted: stats.is_muted(),
+            battery: battery_snapshot(server),
         }
     }
 
@@ -399,12 +400,14 @@ impl HostApi for PluginHostApi {
                         mode: mode.to_string(),
                         label: peer_ip.to_string(),
                         audio_active: true,
+                        battery: battery_snapshot(server),
                     }
                 }
                 ActiveAudioSession::Inactive => DeviceSnapshot {
                     mode: "wifi".to_string(),
                     label: "pending...".to_string(),
                     audio_active: false,
+                    battery: battery_snapshot(server),
                 },
             };
             devices.push(device);
@@ -417,8 +420,17 @@ impl HostApi for PluginHostApi {
                 mode: "web".to_string(),
                 label: "web client".to_string(),
                 audio_active: true,
+                battery: None,
             }));
         }
         devices
     }
+}
+
+/// Battery reported by the connected phone, in the plugin API's shape.
+fn battery_snapshot(server: &crate::server::ServerState) -> Option<BatterySnapshot> {
+    server.network_stats.battery().map(|battery| BatterySnapshot {
+        level: battery.level,
+        charging: battery.charging,
+    })
 }
