@@ -428,7 +428,7 @@ impl HostApi for PluginHostApi {
 }
 
 /// Battery reported by the connected phone, in the plugin API's shape.
-fn battery_snapshot(server: &crate::server::ServerState) -> Option<BatterySnapshot> {
+fn battery_snapshot(server: &crate::plugins::ServerHandles) -> Option<BatterySnapshot> {
     server.network_stats.battery().map(|battery| BatterySnapshot {
         level: battery.level,
         charging: battery.charging,
