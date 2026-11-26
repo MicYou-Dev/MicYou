@@ -8,13 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ----------------- Rust 单元测试 + clippy -----------------
-  # 本仓库的验证都在 GitHub runner 上做；下面的构建任务只保证「能编译」，
-  # 真正的单元测试与 lint 由这个任务负责。
-  test-rust:
+  # ----------------- 单测 + 类型检查 + lint -----------------
+  # 构建任务只保证「能编译」；真正的门禁在这里：前端类型检查（vue-tsc）、
+  # web 单测、Rust 单测与 clippy。src-tauri 的 build.rs 需要 dist/，
+  # 所以先跑一次前端构建。
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: tauri-app/package.json
+    - name: Cache Bun dependencies
+      uses: actions/cache@v6
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('tauri-app/bun.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-bun-
     - name: Setup Rust (stable)
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -24,6 +35,10 @@ jobs:
       with:
         workspaces: tauri-app -> target
         cache-on-failure: true
+    - name: Install cargo-about
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-about@0.9.1
     - name: Install System Dependencies
       run: |
         sudo apt-get update
@@ -35,6 +50,15 @@ jobs:
           libxdo-dev \
           libssl-dev \
           libasound2-dev
+    - name: Install Frontend Dependencies
+      run: bun install --frozen-lockfile
+      working-directory: tauri-app
+    - name: Frontend build (licenses + vue-tsc + vite)
+      run: bun run build
+      working-directory: tauri-app
+    - name: Web tests
+      run: bun run test:web
+      working-directory: tauri-app
     - name: cargo test
       run: cargo test --workspace
       working-directory: tauri-app
