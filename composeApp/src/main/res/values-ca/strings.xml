@@ -400,13 +400,13 @@
     <string name="qs_toast_stopped">Streaming stopped</string>
     <string name="firstLaunchDownloadPc">下载电脑端喵~</string>
     <string name="errorSuggestionCheckSettings">检查系统设置中的应用权限喵~</string>
-    <string name="linkQualityLabel">Qualitat de l'enllaç</string>
+    <string name="linkQualityLabel">Qualitat de l\'enllaç</string>
     <string name="linkQualityRtt">Anada i tornada</string>
     <string name="linkQualityJitter">Jitter</string>
     <string name="linkQualityLoss">Pèrdua de paquets</string>
     <string name="linkQualityLatency">Extrem a extrem</string>
-    <string name="linkQualityWaiting">Esperant l'escriptori…</string>
-    <string name="linkQualityHint">Mesurat per l'escriptori</string>
+    <string name="linkQualityWaiting">Esperant l\'escriptori…</string>
+    <string name="linkQualityHint">Mesurat per l\'escriptori</string>
     <string name="linkQualityExcellent">Excel·lent</string>
     <string name="linkQualityGood">Bo</string>
     <string name="linkQualityFair">Acceptable</string>

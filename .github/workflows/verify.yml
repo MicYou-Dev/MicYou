@@ -3,6 +3,13 @@ name: Verify
 # 轻量门禁：类型检查 + web 单测 + Rust 单测 + clippy + Android Debug 编译。
 # 多平台 Tauri 打包（development.yml / release.yml）耗时十几分钟，不在每次
 # 推送时跑；日常迭代用这个 workflow，`workflow_dispatch` 可指定任意分支。
+#
+# 缓存策略（目标是「第二次推送几乎只跑变更部分」）：
+#   * Bun 依赖缓存 ~/.bun/install/cache，key 由 bun.lock 哈希决定
+#   * Rust 用 Swatinem/rust-cache 缓存依赖与 workspace target（含 sidecar 产物）
+#   * cargo-about 由 taiki-e/install-action 按版本缓存二进制
+#   * Gradle 由 gradle/actions/setup-gradle 缓存 ~/.gradle 与配置缓存
+#   * 同一分支新推送取消旧运行，避免排队浪费额度
 
 on:
   workflow_dispatch:
@@ -10,6 +17,10 @@ on:
     branches: [ "main", "master", "develop" ]
   pull_request:
     branches: [ "main", "master", "develop" ]
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ----------------- 前端类型检查 + web 单测 + Rust 单测/clippy -----------------
@@ -26,7 +37,8 @@ jobs:
       with:
         path: ~/.bun/install/cache
         key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('tauri-app/bun.lock') }}
-        restore-keys: ${{ runner.os }}-${{ runner.arch }}-bun-
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-bun-
     - name: Setup Rust (stable)
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -36,6 +48,9 @@ jobs:
       with:
         workspaces: tauri-app -> target
         cache-on-failure: true
+        cache-all-crates: true
+        # 独立前缀，避免和 development.yml 的多平台构建互相挤掉缓存
+        prefix-key: verify
     - name: Install cargo-about
       uses: taiki-e/install-action@v2
       with:
@@ -64,6 +79,10 @@ jobs:
     - name: Prepare sidecars
       run: bun run prepare-sidecars:dev
       working-directory: tauri-app
+    # native 插件测试会 dlopen 这个 fixture，缺了会 panic
+    - name: Build native plugin test fixture
+      run: cargo build -p micyou-plugin-fixture-native
+      working-directory: tauri-app
     - name: Rust tests
       run: cargo test --workspace
       working-directory: tauri-app
@@ -83,6 +102,19 @@ jobs:
         distribution: 'liberica'
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-read-only: false
+        gradle-home-cache-cleanup: true
+    - name: Cache Kotlin/Gradle build outputs
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.gradle/caches
+          composeApp/build
+          build
+        key: ${{ runner.os }}-gradle-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     - name: Build Android Debug
