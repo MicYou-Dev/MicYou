@@ -13,6 +13,8 @@
       "streamingDesc": "已成功連線至裝置",
       "streamingDescAndroid": "已成功連線至 Android 裝置",
       "streamingDescIos": "已成功連線至 iOS 裝置",
+      "battery": "電量 {level}%",
+      "charging": "充電中",
       "connectingDesc": "正在監聽連接埠 {port}",
       "startingDesc": "正在初始化音訊服務，請稍候",
       "readyDesc": "點擊開始以等待連線",

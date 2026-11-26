@@ -186,6 +186,31 @@ data class PluginMessage(
     }
 }
 
+/** 桌面端每秒推送的链路质量（接收侧测量），见 micyou-protocol network.proto StatsMessage */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class StatsMessage(
+    @ProtoNumber(1)
+    val rttMs: Int = 0,
+    @ProtoNumber(2)
+    val jitterMs: Float = 0f,
+    @ProtoNumber(3)
+    val packetLoss: Float = 0f,
+    @ProtoNumber(4)
+    val latencyMs: Int = 0
+)
+
+/** 手机上报给桌面的状态（目前只有电量），见 network.proto ClientStatusMessage */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class ClientStatusMessage(
+    /** 0-100；-1 表示读不到电量 */
+    @ProtoNumber(1)
+    val batteryLevel: Int = -1,
+    @ProtoNumber(2)
+    val isCharging: Boolean = false
+)
+
 // TCP handshake strings, matching HANDSHAKE_CLIENT_STR / HANDSHAKE_SERVER_STR in micyou-protocol
 const val HANDSHAKE_CLIENT = "MicYouCheck1"
 const val HANDSHAKE_SERVER = "MicYouCheck2"
@@ -223,7 +248,8 @@ fun calculateUdpPort(tcpPort: Int): Int {
 
 /** 判断 MessageWrapper 是否包含控制消息（应通过 TCP 发送） */
 fun MessageWrapper.hasControlMessage(): Boolean {
-    return connect != null || mute != null || ping != null || pong != null || pluginMessage != null
+    return connect != null || mute != null || ping != null || pong != null ||
+        pluginMessage != null || clientStatus != null
 }
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -242,5 +268,11 @@ data class MessageWrapper(
     // Cross-device plugin messaging (micyou-protocol network.proto field 7).
     // proto3 skips unknown fields, so legacy desktops simply ignore it.
     @ProtoNumber(7)
-    val pluginMessage: PluginMessage? = null
+    val pluginMessage: PluginMessage? = null,
+    // 桌面端每秒推送的链路质量（field 8）；旧版本不解析，proto3 会跳过
+    @ProtoNumber(8)
+    val stats: StatsMessage? = null,
+    // 手机上报的电量（field 9）；旧桌面同样跳过
+    @ProtoNumber(9)
+    val clientStatus: ClientStatusMessage? = null
 )

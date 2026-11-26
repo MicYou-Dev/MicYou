@@ -144,6 +144,8 @@ fun MobileHome(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     val audioLevel by viewModel.audioLevels.collectAsState(initial = 0f)
     val soundPad by viewModel.soundPadState.collectAsState()
+    val linkQuality by viewModel.linkQuality.collectAsState(initial = null)
+    val linkPanelOpen by viewModel.linkPanelOpen.collectAsState()
     // SoundPad 面板展开时收起连接配置卡片，把纵向空间让给音效网格
     val soundPadPanelOpen = soundPad.showPanel && soundPad.available
     
@@ -279,6 +281,26 @@ fun MobileHome(viewModel: MainViewModel) {
                     )
                 }
 
+                // 链路质量面板（连接后由底部栏按钮展开，数据来自桌面端回传）
+                AnimatedVisibility(
+                    visible = linkPanelOpen && state.streamState == StreamState.Streaming && contentVisible,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(300, easing = EasingFunctions.EaseOutExpo)
+                    ) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(250, easing = EasingFunctions.EaseInOutExpo)
+                    ) + fadeOut(animationSpec = tween(150))
+                ) {
+                    LinkQualityPanel(
+                        quality = linkQuality,
+                        cardOpacity = state.backgroundSettings.cardOpacity,
+                        hazeState = hazeState,
+                        enableHazeEffect = state.backgroundSettings.enableHazeEffect
+                    )
+                }
+
                 // Bottom bar (mute + soundpad + status)
                 AnimatedCardVisibility(
                     visible = contentVisible,
@@ -288,6 +310,8 @@ fun MobileHome(viewModel: MainViewModel) {
                         state = state,
                         viewModel = viewModel,
                         soundPad = soundPad,
+                        linkQuality = linkQuality,
+                        linkPanelOpen = linkPanelOpen,
                                                 cardOpacity = state.backgroundSettings.cardOpacity,
                         hazeState = hazeState
                     )
@@ -790,6 +814,8 @@ private fun MobileBottomBar(
     state: AppUiState,
     viewModel: MainViewModel,
     soundPad: SoundPadUiState,
+    linkQuality: com.lanrhyme.micyou.audio.LinkQuality?,
+    linkPanelOpen: Boolean,
     cardOpacity: Float = 1f,
     hazeState: HazeState? = null
 ) {
@@ -816,6 +842,14 @@ private fun MobileBottomBar(
                     SoundPadToggleButton(
                         isActive = soundPad.showPanel,
                         onToggle = { viewModel.toggleSoundPadPanel() }
+                    )
+                }
+                // 连接后出现：桌面端每秒回传的链路质量
+                if (state.streamState == StreamState.Streaming) {
+                    LinkQualityToggleButton(
+                        isActive = linkPanelOpen,
+                        rttMs = linkQuality?.rttMs,
+                        onToggle = { viewModel.toggleLinkPanel() }
                     )
                 }
             }

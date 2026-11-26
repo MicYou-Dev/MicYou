@@ -343,6 +343,8 @@ WASM 插件是 core wasm 模块（无需 WASI），在 `wasmi` 纯 Rust 解释�
 | `plugin_dir` | `() -> i32` | -> 插件安装目录绝对路径字符串 |
 | `register_hotkey` | `(i32) -> i64` | 快捷键字符串指针 -> 句柄 id（0 = 失败） |
 
+> `audio_state` 与 `connected_devices` 里的设备项自 2.2.x 起可能带一个可选的 `battery: { level, charging }`（手机上报的电量）。字段**可能整个缺失**（无设备 / 旧版手机 / web 客户端），解析时按可选字段处理即可；这是纯增量 JSON，旧插件不重新编译也照常工作。字段语义与示例见 [api-reference.md](api-reference.md)。
+
 ### 完整最小示例（Rust）
 
 `micyou-cli plugin create dev.micyou.hello --runtime wasm` 生成完整 Rust 骨架（推荐路径）

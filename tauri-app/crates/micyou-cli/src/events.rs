@@ -14,7 +14,7 @@
  */
 
 use micyou_core::events::{AecStatus, DownloadProgress, ServerEvents, SpectrumPayload};
-use micyou_core::stats::AudioMetrics;
+use micyou_core::stats::{AudioMetrics, BatteryStatus};
 use micyou_core::transport::tcp::DeviceInfo;
 
 /// Log-mode events: print a compact line per event.
@@ -38,6 +38,18 @@ impl ServerEvents for CliEventSink {
 
     fn device_disconnected(&self) {
         println!("[mic] disconnected");
+    }
+
+    fn client_battery(&self, battery: Option<BatteryStatus>) {
+        // Only the reported state is worth a line; clearing on disconnect is
+        // already covered by [mic] disconnected.
+        if let Some(battery) = battery {
+            println!(
+                "[mic] battery {}%{}",
+                battery.level,
+                if battery.charging { " (charging)" } else { "" }
+            );
+        }
     }
 
     fn audio_metrics(&self, metrics: AudioMetrics) {

@@ -22,6 +22,14 @@ export interface StreamingStatus {
   isConnected: boolean;
   isMuted: boolean;
   platform: ClientPlatform;
+  /** Battery reported by the connected phone; null when unknown. */
+  battery: BatteryStatus | null;
+}
+
+/** Charge the connected phone reported over the control channel. */
+export interface BatteryStatus {
+  level: number;
+  charging: boolean;
 }
 
 export interface DeviceInfo {

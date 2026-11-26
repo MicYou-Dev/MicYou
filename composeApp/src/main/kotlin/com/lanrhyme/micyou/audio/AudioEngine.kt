@@ -364,6 +364,13 @@ class AudioEngine constructor() {
     )
     val pluginMessages: SharedFlow<PluginMessage> = _pluginMessages.asSharedFlow()
 
+    // 桌面端每秒推送的链路质量（MessageWrapper 字段 8）；旧桌面不发送，
+    // 此时保持 null，界面据此隐藏入口。
+    private val _linkQuality = MutableStateFlow<LinkQuality?>(null)
+    val linkQuality: Flow<LinkQuality?> = _linkQuality
+
+    fun currentLinkQuality(): LinkQuality? = _linkQuality.value
+
     private data class StopResources(
         val sessionJob: Job?,
         val recorder: AudioRecord?,
@@ -498,6 +505,7 @@ class AudioEngine constructor() {
                     lifecycleGeneration++
                     val sessionGeneration = lifecycleGeneration
                     _state.value = StreamState.Connecting
+                    _linkQuality.value = null
                     val sessionJob = lifecycleScope.launch(start = CoroutineStart.LAZY) {
                     var recorder: AudioRecord? = null
                     var sessionUdpSocket: DatagramSocket? = null
@@ -520,6 +528,7 @@ class AudioEngine constructor() {
                     var output: ByteWriteChannel? = null
                     var selectorManager: SelectorManager? = null
                     var closeConnection: () -> Unit = {}
+                    var batteryReporter: BatteryStatusReporter? = null
                     val sessionJobIdentity = requireNotNull(currentCoroutineContext()[Job])
 
                     try {
@@ -771,6 +780,16 @@ class AudioEngine constructor() {
                             Logger.d("AudioEngine", "Writer loop stopped")
                         }
 
+                        // 电量上报：注册粘性广播时立刻拿到当前电量并发出首包，
+                        // 之后仅在电量/充电状态变化时推送（field 9）。
+                        ContextHelper.getContext()?.let { context ->
+                            batteryReporter = BatteryStatusReporter(context).also { reporter ->
+                                reporter.start { status ->
+                                    channel.trySend(MessageWrapper(clientStatus = status))
+                                }
+                            }
+                        }
+
                         val readerJob = if (tcpSocket != null) {
                             launch {
                                 val inChannel = input ?: throw IllegalStateException("TCP input channel unavailable for reader")
@@ -814,6 +833,16 @@ class AudioEngine constructor() {
 
                                                 wrapper.pluginMessage?.let { pm ->
                                                     _pluginMessages.tryEmit(pm)
+                                                }
+
+                                                // 桌面端每秒推送的链路质量（field 8）
+                                                wrapper.stats?.let { stats ->
+                                                    _linkQuality.value = LinkQuality(
+                                                        rttMs = stats.rttMs,
+                                                        jitterMs = stats.jitterMs,
+                                                        packetLoss = stats.packetLoss,
+                                                        latencyMs = stats.latencyMs
+                                                    )
                                                 }
                                             } catch (e: Exception) {
                                                 Logger.e("AudioEngine", "Error decoding incoming message", e)
@@ -1048,6 +1077,9 @@ class AudioEngine constructor() {
                     } finally {
                         connectionComplete.completeExceptionally(CancellationException("Audio session ended before startup completed"))
                         Logger.d("AudioEngine", "Cleaning up resources for generation $sessionGeneration")
+                        batteryReporter?.stop()
+                        batteryReporter = null
+                        _linkQuality.value = null
                         channel.close()
                         val recorderToRelease = recorder
                         val recorderStopCompletion = stopAndReleaseRecorderAsync(recorderToRelease)

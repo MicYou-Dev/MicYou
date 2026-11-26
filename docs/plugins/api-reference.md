@@ -106,14 +106,17 @@ typedef struct mpl_host_api {
 - `audio_state` 返回 JSON 快照：
 
 ```json
-{ "streaming": true, "sampleRate": 48000, "channels": 1, "inputLevel": 0.42, "processedLevel": 0.38, "queuedMs": 12.5, "muted": false }
+{ "streaming": true, "sampleRate": 48000, "channels": 1, "inputLevel": 0.42, "processedLevel": 0.38, "queuedMs": 12.5, "muted": false, "battery": { "level": 78, "charging": true } }
 ```
 
+- `battery` 是手机上报的电量（`level` 0–100，`charging` 是否在充电）；无设备、旧版手机不上报或连接的是 web 客户端时，**整个字段被省略**。新增字段是纯增量：旧版宿主不返回它，旧版插件忽略它，双方都不需要重新编译
 - `connected_devices` 返回 JSON 数组：
 
 ```json
-[ { "mode": "wifi", "label": "MicYou Mobile", "audioActive": true } ]
+[ { "mode": "wifi", "label": "192.168.1.5", "audioActive": true, "battery": { "level": 78, "charging": true } } ]
 ```
+
+- web 客户端的 `battery` 同样省略；判定电量是否需要刷新时请以 `battery` 是否存在为准，不要用 `level: 0` 猜测
 
 - `host_info` 返回：
 

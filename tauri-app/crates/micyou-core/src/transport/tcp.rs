@@ -677,6 +677,7 @@ async fn handle_client(
                 pong: None,
                 plugin_message: None,
                 stats: None,
+                client_status: None,
             };
             if tx_ping.send(ping_msg).await.is_err() {
                 break;
@@ -773,6 +774,8 @@ async fn handle_client(
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = ActiveAudioSession::default();
         stats.mark_tcp_disconnected();
         events.device_disconnected();
+        // The charge belongs to the device that just left; the next one starts unknown.
+        events.client_battery(stats.battery());
         plugins.broadcast_event(&micyou_plugin::PluginEvent::DeviceDisconnected);
     }
     // Release the plugin sync slot if it still points at this session.
@@ -847,6 +850,7 @@ async fn handle_message(
             }),
             plugin_message: None,
             stats: None,
+            client_status: None,
         };
         let permit = tokio::select! {
             biased;
@@ -894,6 +898,26 @@ async fn handle_message(
             plugins.bus.handle_incoming(&logical);
         }
     }
+    if let Some(client_status) = msg.client_status {
+        // Battery report from the phone. A superseded connection must not
+        // overwrite the live device's charge either.
+        if is_active(active_connection, takeover_token, connection_id).await {
+            let battery = clamp_battery(client_status.battery_level, client_status.is_charging);
+            stats.set_battery(
+                battery.map_or(-1, |battery| battery.level),
+                client_status.is_charging,
+            );
+            events.client_battery(battery);
+        }
+    }
+}
+
+/// Phone battery report → public status. Out-of-range levels mean "unknown"
+/// rather than being clamped into a plausible-looking lie.
+fn clamp_battery(level: i32, charging: bool) -> Option<crate::stats::BatteryStatus> {
+    (0..=100)
+        .contains(&level)
+        .then_some(crate::stats::BatteryStatus { level, charging })
 }
 
 #[cfg(test)]

@@ -155,6 +155,7 @@ const ZH: Dict = Dict {
         ("server_addr_hint", "手机端连接地址"),
         ("staged_hint", "更改模式/端口后需重启生效"),
         ("level_overflow", "电平过高"),
+        ("battery", "电量"),
     ],
 };
 
@@ -249,6 +250,7 @@ const EN: Dict = Dict {
         ("server_addr_hint", "Connect from phone at"),
         ("staged_hint", "Mode/port changes require a restart"),
         ("level_overflow", "Level too high"),
+        ("battery", "Battery"),
     ],
 };
 
@@ -340,6 +342,7 @@ const CAT: Dict = Dict {
         ("server_addr_hint", "手机端连接地址"),
         ("staged_hint", "更改模式/端口后需重启生效喵~"),
         ("level_overflow", "电平过高"),
+        ("battery", "Bateria"),
     ],
 };
 
@@ -422,6 +425,7 @@ const LZH: Dict = Dict {
         ("server_addr_hint", "手机端连接地址"),
         ("staged_hint", "改模式/端口后需重启"),
         ("level_overflow", "电平过高"),
+        ("battery", "電量"),
     ],
 };
 
@@ -504,6 +508,7 @@ const ZH_HK: Dict = Dict {
         ("server_addr_hint", "手機端連接地址"),
         ("staged_hint", "改模式/埠之後要重啟先得"),
         ("level_overflow", "電平過高"),
+        ("battery", "電量"),
     ],
 };
 
@@ -592,6 +597,7 @@ const ZH_SS: Dict = Dict {
         ("server_addr_hint", "手机端连接地址"),
         ("staged_hint", "更改模式/端口后需重启生效"),
         ("level_overflow", "电平过高"),
+        ("battery", "电量"),
     ],
 };
 
@@ -680,6 +686,7 @@ const ZH_TW: Dict = Dict {
         ("server_addr_hint", "手機端連線位址"),
         ("staged_hint", "變更模式/連接埠後需重新啟動"),
         ("level_overflow", "電平過高"),
+        ("battery", "電量"),
     ],
 };
 

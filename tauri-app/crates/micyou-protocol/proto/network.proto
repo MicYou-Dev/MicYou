@@ -15,6 +15,16 @@ message MessageWrapper {
     // Desktop to phone once a second while connected, so the phone can show link quality.
     // Unknown to legacy clients: proto3 skips it, so the wire stays compatible.
     StatsMessage stats = 8;
+    // Phone to desktop: battery level and charging state, pushed after the
+    // handshake and whenever either value changes. Legacy desktops skip it.
+    ClientStatusMessage clientStatus = 9;
+}
+
+// Client status reported by the phone (currently just its battery), so the
+// desktop can show the device's charge next to the connection state.
+message ClientStatusMessage {
+    int32 batteryLevel = 1;  // 0-100; -1 means unknown / not available
+    bool isCharging = 2;
 }
 
 // Receive-side link statistics measured by the desktop.

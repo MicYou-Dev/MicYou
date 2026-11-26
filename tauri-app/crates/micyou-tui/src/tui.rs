@@ -38,7 +38,7 @@ use std::time::Instant;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use micyou_core::config::ServerPrefs;
 use micyou_core::server::ServerState;
-use micyou_core::stats::AudioMetrics;
+use micyou_core::stats::{AudioMetrics, BatteryStatus};
 use micyou_core::transport::tcp::DeviceInfo;
 
 /// Vertical split of the whole screen: [title, tabs, body, footer].
@@ -59,6 +59,8 @@ pub struct TuiApp {
     pub port: u16,
     pub mode: String,
     pub device: Option<DeviceInfo>,
+    /// Battery reported by the connected phone (None = unknown/unreported).
+    pub battery: Option<BatteryStatus>,
     pub metrics: Option<AudioMetrics>,
     pub level: u32,
     pub muted: bool,
@@ -114,6 +116,7 @@ impl TuiApp {
             port,
             mode,
             device: None,
+            battery: None,
             metrics: None,
             level: 0,
             muted: false,
@@ -194,7 +197,21 @@ impl TuiApp {
             }
             Event::DeviceDisconnected => {
                 self.device = None;
+                self.battery = None;
                 self.log("[warn] mic disconnected".to_string());
+            }
+            Event::Battery(battery) => {
+                let changed = battery != self.battery;
+                self.battery = battery;
+                if changed {
+                    if let Some(battery) = battery {
+                        self.log(format!(
+                            "[inf] battery {}%{}",
+                            battery.level,
+                            if battery.charging { " (charging)" } else { "" }
+                        ));
+                    }
+                }
             }
             Event::Metrics(m) => {
                 let latency = m.latency_ms.max(0) as u64;
@@ -520,6 +537,19 @@ impl TuiApp {
                         Style::default().fg(theme.tertiary.to_color()),
                     )],
                 ));
+                if let Some(battery) = self.battery {
+                    rows.push(row(
+                        self.t("battery").as_str(),
+                        vec![Span::styled(
+                            if battery.charging {
+                                format!("{}% ⚡", battery.level)
+                            } else {
+                                format!("{}%", battery.level)
+                            },
+                            Style::default().fg(theme.tertiary.to_color()),
+                        )],
+                    ));
+                }
             }
             None => {
                 rows.push(row(

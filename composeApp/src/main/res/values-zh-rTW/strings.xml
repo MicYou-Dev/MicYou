@@ -415,4 +415,15 @@
     <string name="soundpadVolume">音量</string>
     <string name="soundpadBack">返回上層</string>
     <string name="soundpadFolderCount">%1$d 項</string>
+    <string name="linkQualityLabel">鏈路品質</string>
+    <string name="linkQualityRtt">往返延遲</string>
+    <string name="linkQualityJitter">抖動</string>
+    <string name="linkQualityLoss">封包遺失</string>
+    <string name="linkQualityLatency">端到端延遲</string>
+    <string name="linkQualityWaiting">等待桌面端資料…</string>
+    <string name="linkQualityHint">由桌面端測量</string>
+    <string name="linkQualityExcellent">優秀</string>
+    <string name="linkQualityGood">良好</string>
+    <string name="linkQualityFair">一般</string>
+    <string name="linkQualityPoor">較差</string>
 </resources>

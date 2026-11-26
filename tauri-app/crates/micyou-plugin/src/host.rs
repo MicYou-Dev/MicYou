@@ -82,6 +82,24 @@ pub struct AudioStateSnapshot {
     pub queued_ms: f64,
     /// Whether the mute button is engaged.
     pub muted: bool,
+    /// Battery reported by the connected phone. Older hosts omit the field,
+    /// so consumers must treat it as optional (JSON stays additive).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery: Option<BatterySnapshot>,
+}
+
+/// Battery of the connected phone, as reported over the control channel.
+///
+/// Older plugins that deserialize [`AudioStateSnapshot`] into their own struct
+/// simply ignore the extra key; no ABI bump is involved because the host API
+/// hands snapshots over as JSON strings.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BatterySnapshot {
+    /// Charge in percent (0..=100).
+    pub level: i32,
+    /// Whether the device reports itself as charging.
+    pub charging: bool,
 }
 
 /// Snapshot of a connected device (phone / web client).
@@ -94,6 +112,10 @@ pub struct DeviceSnapshot {
     pub label: String,
     /// Whether the device audio session is active.
     pub audio_active: bool,
+    /// Battery reported by this device; `None` for web clients and legacy
+    /// phones that never send one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery: Option<BatterySnapshot>,
 }
 
 /// Target of a cross-device plugin message.
@@ -253,10 +275,59 @@ pub trait HostApi: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::sandbox_path;
+    use super::{AudioStateSnapshot, BatterySnapshot, DeviceSnapshot};
     use std::path::Path;
 
     fn dir() -> &'static Path {
         Path::new("/tmp/plugin-dir")
+    }
+
+    /// A snapshot serialized by an older host has no `battery` key; plugins
+    /// (and the host itself) must still deserialize it.
+    #[test]
+    fn audio_state_without_battery_still_deserializes() {
+        let old = r#"{"streaming":true,"sampleRate":48000,"channels":1,
+            "inputLevel":0.4,"processedLevel":0.3,"queuedMs":12.5,"muted":false}"#;
+        let snapshot: AudioStateSnapshot = serde_json::from_str(old).expect("old JSON must parse");
+        assert_eq!(snapshot.battery, None);
+        assert!(snapshot.streaming);
+    }
+
+    #[test]
+    fn audio_state_serializes_battery_and_round_trips() {
+        let snapshot = AudioStateSnapshot {
+            streaming: true,
+            battery: Some(BatterySnapshot {
+                level: 78,
+                charging: true,
+            }),
+            ..AudioStateSnapshot::default()
+        };
+        let json = serde_json::to_string(&snapshot).expect("serialize");
+        assert!(json.contains(r#""battery":{"level":78,"charging":true}"#), "{json}");
+        let back: AudioStateSnapshot = serde_json::from_str(&json).expect("round trip");
+        assert_eq!(back.battery, snapshot.battery);
+    }
+
+    /// The field is additive: an unknown key must not break an older plugin
+    /// struct that predates it (verified by serde's default behaviour).
+    #[test]
+    fn device_snapshot_skips_battery_when_unknown() {
+        assert_eq!(
+            serde_json::to_string(&DeviceSnapshot::default()).unwrap(),
+            r#"{"mode":"","label":"","audioActive":false}"#
+        );
+        let with_battery = DeviceSnapshot {
+            mode: "wifi".into(),
+            label: "192.168.1.5".into(),
+            audio_active: true,
+            battery: Some(BatterySnapshot {
+                level: 12,
+                charging: false,
+            }),
+        };
+        let json = serde_json::to_string(&with_battery).unwrap();
+        assert!(json.contains(r#""battery":{"level":12,"charging":false}"#), "{json}");
     }
 
     #[test]

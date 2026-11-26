@@ -14,7 +14,7 @@
  */
 
 use micyou_core::events::{AecStatus, DownloadProgress, ServerEvents, SpectrumPayload};
-use micyou_core::stats::AudioMetrics;
+use micyou_core::stats::{AudioMetrics, BatteryStatus};
 use micyou_core::transport::tcp::DeviceInfo;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
@@ -25,6 +25,8 @@ use std::time::Instant;
 pub enum Event {
     DeviceConnected(DeviceInfo),
     DeviceDisconnected,
+    /// Battery reported by the phone; `None` clears it.
+    Battery(Option<BatteryStatus>),
     Metrics(AudioMetrics),
     UdpWarning,
     MuteChanged(bool),
@@ -99,6 +101,10 @@ impl ServerEvents for TuiEventSink {
 
     fn device_disconnected(&self) {
         let _ = self.tx.send(Event::DeviceDisconnected);
+    }
+
+    fn client_battery(&self, battery: Option<BatteryStatus>) {
+        let _ = self.tx.send(Event::Battery(battery));
     }
 
     fn audio_metrics(&self, metrics: AudioMetrics) {

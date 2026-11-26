@@ -415,4 +415,15 @@
     <string name="soundpadVolume">Volume</string>
     <string name="soundpadBack">Back</string>
     <string name="soundpadFolderCount">%1$d items</string>
+    <string name="linkQualityLabel">Link quality</string>
+    <string name="linkQualityRtt">RTT</string>
+    <string name="linkQualityJitter">Jitter</string>
+    <string name="linkQualityLoss">Packet loss</string>
+    <string name="linkQualityLatency">End-to-end</string>
+    <string name="linkQualityWaiting">Waiting for the desktop…</string>
+    <string name="linkQualityHint">Measured by the desktop</string>
+    <string name="linkQualityExcellent">Excellent</string>
+    <string name="linkQualityGood">Good</string>
+    <string name="linkQualityFair">Fair</string>
+    <string name="linkQualityPoor">Poor</string>
 </resources>
