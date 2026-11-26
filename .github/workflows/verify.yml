@@ -1,0 +1,89 @@
+name: Verify
+
+# 轻量门禁：类型检查 + web 单测 + Rust 单测 + clippy + Android Debug 编译。
+# 多平台 Tauri 打包（development.yml / release.yml）耗时十几分钟，不在每次
+# 推送时跑；日常迭代用这个 workflow，`workflow_dispatch` 可指定任意分支。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+jobs:
+  # ----------------- 前端类型检查 + web 单测 + Rust 单测/clippy -----------------
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: tauri-app/package.json
+    - name: Cache Bun dependencies
+      uses: actions/cache@v6
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('tauri-app/bun.lock') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-bun-
+    - name: Setup Rust (stable)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - name: Cache Rust
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: tauri-app -> target
+        cache-on-failure: true
+    - name: Install cargo-about
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-about@0.9.1
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev \
+          patchelf \
+          libxdo-dev \
+          libssl-dev \
+          libasound2-dev
+    - name: Install Frontend Dependencies
+      run: bun install --frozen-lockfile
+      working-directory: tauri-app
+    - name: Frontend type check + build
+      run: bun run build
+      working-directory: tauri-app
+    - name: Web tests
+      run: bun run test:web
+      working-directory: tauri-app
+    # src-tauri 的 build.rs 要求 dist/ 与 sidecar 二进制都已存在
+    - name: Prepare sidecars
+      run: bun run prepare-sidecars:dev
+      working-directory: tauri-app
+    - name: Rust tests
+      run: cargo test --workspace
+      working-directory: tauri-app
+    - name: Rust clippy
+      run: cargo clippy --workspace --all-targets
+      working-directory: tauri-app
+
+  # ----------------- Android Debug 编译 -----------------
+  android:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: set up JDK 21
+      uses: actions/setup-java@v5
+      with:
+        java-version: '21'
+        distribution: 'liberica'
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    - name: Build Android Debug
+      run: ./gradlew :composeApp:assembleDebug
