@@ -59,6 +59,10 @@ jobs:
     - name: Web tests
       run: bun run test:web
       working-directory: tauri-app
+    # src-tauri 的 build.rs 要求 sidecar 二进制已存在
+    - name: Prepare sidecars
+      run: bun run prepare-sidecars:dev
+      working-directory: tauri-app
     - name: cargo test
       run: cargo test --workspace
       working-directory: tauri-app
